@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "wuwu",
-    "slug": "wuwu",
+    "name": "Wu-Wu",
+    "slug": "wu-wu",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "wuwu",
+    "scheme": "wu-wu",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.nerfkevin.wuwu"
+      "bundleIdentifier": "com.kevinngo03.wuwu"
     },
     "android": {
       "adaptiveIcon": {
@@ -39,6 +39,22 @@
           "dark": {
             "backgroundColor": "#000000"
           }
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Wu-Wu to access your microphone.",
+          "recordAudioAndroid": true,
+          "enableBackgroundPlayback": true
+        }
+      ],
+      [
+        "react-native-audio-api",
+        {
+          "iosMicrophonePermission": "Allow Wu-Wu to access your microphone.",
+          "iosBackgroundMode": true,
+          "androidForegroundService": true
         }
       ]
     ],

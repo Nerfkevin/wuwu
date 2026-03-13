@@ -1,98 +1,148 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import React, { useState } from 'react';
+import { StyleSheet, Text, View, Pressable } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import AnimatedGlow, { GlowEvent } from 'react-native-animated-glow';
+import { Colors, Fonts } from '@/constants/theme';
+import { GlowPresets } from '@/constants/glow';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const router = useRouter();
+  const [glowState, setGlowState] = useState<GlowEvent>('default');
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  return (
+    <View style={styles.container}>
+      {/* Header Icons */}
+      <View style={styles.header}>
+        <View /> 
+        {/* Just spacing, icons on right */}
+        <View style={styles.headerIcons}>
+           {/* Library and Profile are in tabs, but spec says "Top right: Library icon + Profile icon". 
+               Since we have tabs, maybe these are shortcuts or redundant. I'll include them as per spec. */}
+          <Pressable onPress={() => router.push('/(tabs)/library')} style={styles.iconButton}>
+             <Ionicons name="library-outline" size={24} color={Colors.text} />
+          </Pressable>
+          <Pressable onPress={() => router.push('/(tabs)/profile')} style={styles.iconButton}>
+             <Ionicons name="person-outline" size={24} color={Colors.text} />
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={styles.content}>
+        <Text style={styles.title}>Wu-Wu</Text>
+        
+        <View style={styles.buttonContainer}>
+          <AnimatedGlow 
+            preset={GlowPresets.chakra(90)}
+            activeState={glowState}
+          >
+            <Pressable 
+              style={styles.mainButton}
+              onPress={() => router.push('/session/selection')}
+              onPressIn={() => setGlowState('press')}
+              onPressOut={() => setGlowState('default')}
+            >
+              <LinearGradient
+                colors={Colors.chakra.gradient}
+                style={styles.buttonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Text style={styles.buttonText}>Start Session</Text>
+              </LinearGradient>
+            </Pressable>
+          </AnimatedGlow>
+        </View>
+
+        <Text style={styles.footerText}>
+          Your voice. Your frequencies. Your transformation.
+        </Text>
+      </View>
+      
+      {/* Subtle bottom gradient */}
+      <LinearGradient
+        colors={['transparent', 'rgba(255, 0, 110, 0.1)']}
+        style={styles.bottomGradient}
+        pointerEvents="none"
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    justifyContent: 'space-between',
+  },
+  header: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 20,
+    marginTop: 40,
+  },
+  headerIcons: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  iconButton: {
+    padding: 8,
+  },
+  content: {
+    flex: 1,
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
+    gap: 60,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  title: {
+    fontFamily: Fonts.serif,
+    fontSize: 64,
+    color: Colors.text,
+    letterSpacing: 4,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
+  buttonContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 200,
+    height: 200,
+  },
+  mainButton: {
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    elevation: 10,
+    shadowColor: Colors.chakra.red,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+  },
+  buttonGradient: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 90,
+  },
+  buttonText: {
+    fontFamily: Fonts.serifBold,
+    fontSize: 24,
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  footerText: {
+    fontFamily: Fonts.mono,
+    fontSize: 12,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    opacity: 0.7,
+    maxWidth: '80%',
+  },
+  bottomGradient: {
+    position: 'absolute',
     bottom: 0,
     left: 0,
-    position: 'absolute',
+    right: 0,
+    height: 100,
   },
 });
