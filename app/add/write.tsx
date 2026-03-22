@@ -13,7 +13,7 @@ import {
   Animated,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import AnimatedGlow, { GlowEvent } from 'react-native-animated-glow';
+import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
 import { Colors, Fonts } from '@/constants/theme';
 import { GlowPresets } from '@/constants/glow';
 import { Ionicons } from '@expo/vector-icons';

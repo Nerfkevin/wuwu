@@ -9,39 +9,51 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
+  createAudioPlayer,
   getRecordingPermissionsAsync,
   RecordingPresets,
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
   useAudioRecorder,
   useAudioRecorderState,
-} from 'expo-audio';
-import {
-  AudioBuffer,
-  AudioBufferSourceNode,
-  BaseAudioContext,
-  AudioContext,
-  AudioNode,
-  ConvolverNode,
-  OfflineAudioContext,
-} from 'react-native-audio-api';
+} from '@/lib/expo-audio';
+import type { AudioPlayer } from '@/lib/expo-audio';
+import { AudioBuffer, AudioContext } from '@/lib/audio-api-core';
 import { AFFIRMATION_PILLARS, PillarKey } from '@/constants/affirmations';
 import { Colors, Fonts } from '@/constants/theme';
-import AnimatedGlow, { GlowEvent } from 'react-native-animated-glow';
+import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
 import { GlowPresets } from '@/constants/glow';
 import AffirmationCard from './components/affirmation-card';
-import { saveRecordingToDevice } from './recording-store';
-import { Directory, File, Paths } from 'expo-file-system';
+import TrimEditor from './components/trim-editor';
+import {
+  normalizeAndCompressVoice,
+  renderBufferToFileWithEffects,
+  runOfflineEnhance,
+  trimBuffer,
+} from './recording-audio';
+import { saveRecordingToDevice } from '@/lib/recording-store';
+import {
+  activateLockScreenControls,
+  clearLockScreenControls,
+  configureBackgroundPlaybackAsync,
+  configureMixedPlaybackAsync,
+} from '@/lib/audio-playback';
 
 const recordColor = '#FF0000';
+const TRIM_MIN_GAP_SECONDS = 0.35;
+const TRIM_EPSILON = 0.0001;
 
 const normalizeParam = (value?: string | string[]) =>
   Array.isArray(value) ? value[0] : value;
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 export default function RecordingScreen() {
   const router = useRouter();
@@ -52,9 +64,13 @@ export default function RecordingScreen() {
   const [hasRecorded, setHasRecorded] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isApplyingEnhance, setIsApplyingEnhance] = useState(false);
+  const [isProcessingRecording, setIsProcessingRecording] = useState(false);
   const [progress, setProgress] = useState(0);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [glowState, setGlowState] = useState<GlowEvent>('default');
+  const [audioDuration, setAudioDuration] = useState(0);
+  const [trimStartRatio, setTrimStartRatio] = useState(0);
+  const [trimEndRatio, setTrimEndRatio] = useState(1);
   const [effects, setEffects] = useState({
     enhance: false,
     echo: false,
@@ -63,16 +79,13 @@ export default function RecordingScreen() {
   const transition = useRef(new Animated.Value(0)).current;
   const audioContextRef = useRef<AudioContext | null>(null);
   const decodedBufferRef = useRef<AudioBuffer | null>(null);
-  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const originalBufferRef = useRef<AudioBuffer | null>(null);
+  const enhancedBufferRef = useRef<AudioBuffer | null>(null);
   const enhanceAppliedRef = useRef(false);
+  const previewPlayerRef = useRef<AudioPlayer | null>(null);
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const playbackStartedAtRef = useRef(0);
-  const playbackStartOffsetRef = useRef(0);
   const pausedPositionRef = useRef(0);
-  const manualStopRef = useRef(false);
-  const reverbImpulseRef = useRef<AudioBuffer | null>(null);
-  const echoImpulseRef = useRef<AudioBuffer | null>(null);
+  const previewSourceKeyRef = useRef('');
   const initialText = typeof params.text === 'string' ? params.text.trim() : '';
   const shouldStartInCompose = initialText.length === 0 || normalizeParam(params.writeOwn) === '1';
   const [draftMessage, setDraftMessage] = useState(initialText);
@@ -120,6 +133,30 @@ export default function RecordingScreen() {
     inputRange: [0, 1],
     outputRange: [10, 0],
   });
+  const minTrimGapRatio = useMemo(() => {
+    if (audioDuration <= 0) {
+      return 0.04;
+    }
+    return Math.min(1, Math.max(TRIM_MIN_GAP_SECONDS / audioDuration, 0.04));
+  }, [audioDuration]);
+  const trimStartTime = audioDuration * trimStartRatio;
+  const trimEndTime = audioDuration * trimEndRatio;
+  const trimmedDuration = Math.max(0, trimEndTime - trimStartTime);
+  const hasTrimSelection =
+    audioDuration > 0 && (trimStartRatio > TRIM_EPSILON || trimEndRatio < 1 - TRIM_EPSILON);
+  const playheadTime = trimStartTime + progress * trimmedDuration;
+  const playheadRatio =
+    audioDuration > 0 && trimmedDuration > 0
+      ? clamp(playheadTime / audioDuration, trimStartRatio, trimEndRatio)
+      : trimStartRatio;
+  const prepareEnhancedBuffer = async (sourceBuffer: AudioBuffer) => {
+    const context = audioContextRef.current;
+    if (!context) {
+      return null;
+    }
+
+    return runOfflineEnhance(context, sourceBuffer);
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -155,15 +192,14 @@ export default function RecordingScreen() {
     audioContextRef.current = context;
 
     return () => {
-      if (sourceNodeRef.current) {
-        manualStopRef.current = true;
-        sourceNodeRef.current.stop();
-        sourceNodeRef.current.disconnect();
-        sourceNodeRef.current = null;
-      }
       if (progressTimerRef.current) {
         clearInterval(progressTimerRef.current);
         progressTimerRef.current = null;
+      }
+      if (previewPlayerRef.current) {
+        clearLockScreenControls(previewPlayerRef.current);
+        previewPlayerRef.current.remove();
+        previewPlayerRef.current = null;
       }
       context.close().catch(() => undefined);
     };
@@ -181,18 +217,49 @@ export default function RecordingScreen() {
         if (!isMounted || !audioBuffer) {
           return;
         }
+        const preparedEnhancedBuffer = await prepareEnhancedBuffer(audioBuffer);
+        if (!isMounted) {
+          return;
+        }
         decodedBufferRef.current = audioBuffer;
         originalBufferRef.current = audioBuffer;
+        enhancedBufferRef.current = preparedEnhancedBuffer;
         enhanceAppliedRef.current = false;
+        setAudioDuration(audioBuffer.duration);
+        setTrimStartRatio(0);
+        setTrimEndRatio(1);
         setEffects({ enhance: false, echo: false, reverb: false });
         setIsApplyingEnhance(false);
+        setIsProcessingRecording(false);
         setProgress(0);
         pausedPositionRef.current = 0;
+        previewSourceKeyRef.current = '';
+        if (previewPlayerRef.current) {
+          clearLockScreenControls(previewPlayerRef.current);
+          previewPlayerRef.current.remove();
+          previewPlayerRef.current = null;
+        }
+        setIsPlaying(false);
+        setHasRecorded(true);
       } catch {
         decodedBufferRef.current = null;
         originalBufferRef.current = null;
+        enhancedBufferRef.current = null;
         enhanceAppliedRef.current = false;
+        setAudioDuration(0);
+        setTrimStartRatio(0);
+        setTrimEndRatio(1);
+        setIsApplyingEnhance(false);
+        setIsProcessingRecording(false);
+        setHasRecorded(false);
         pausedPositionRef.current = 0;
+        previewSourceKeyRef.current = '';
+        if (previewPlayerRef.current) {
+          clearLockScreenControls(previewPlayerRef.current);
+          previewPlayerRef.current.remove();
+          previewPlayerRef.current = null;
+        }
+        setIsPlaying(false);
       }
     };
 
@@ -203,295 +270,159 @@ export default function RecordingScreen() {
     };
   }, [audioUri]);
 
-  const createReverbImpulse = (context: BaseAudioContext, fresh = false) => {
-    if (!fresh && reverbImpulseRef.current) {
-      return reverbImpulseRef.current;
-    }
-    const duration = 1.1;
-    const decay = 3.5;
-    const length = Math.floor(context.sampleRate * duration);
-    const impulse = context.createBuffer(2, length, context.sampleRate);
-    for (let channel = 0; channel < impulse.numberOfChannels; channel += 1) {
-      const channelData = impulse.getChannelData(channel);
-      for (let i = 0; i < length; i += 1) {
-        const envelope = Math.pow(1 - i / length, decay);
-        channelData[i] = (Math.random() * 2 - 1) * envelope * 0.15;
-      }
-    }
-    if (!fresh) {
-      reverbImpulseRef.current = impulse;
-    }
-    return impulse;
-  };
+  const getTrimmedBuffer = (buffer: AudioBuffer) =>
+    trimBuffer({
+      buffer,
+      context: audioContextRef.current,
+      enabled: hasTrimSelection,
+      startTime: trimStartTime,
+      endTime: trimEndTime,
+    });
 
-  const createEchoImpulse = (context: BaseAudioContext, fresh = false) => {
-    if (!fresh && echoImpulseRef.current) {
-      return echoImpulseRef.current;
-    }
-    const duration = 0.9;
-    const length = Math.floor(context.sampleRate * duration);
-    const impulse = context.createBuffer(2, length, context.sampleRate);
-    const taps = [
-      { time: 0.11, gain: 0.34 },
-      { time: 0.23, gain: 0.22 },
-      { time: 0.38, gain: 0.14 },
-      { time: 0.54, gain: 0.1 },
-    ];
-    for (let channel = 0; channel < impulse.numberOfChannels; channel += 1) {
-      const channelData = impulse.getChannelData(channel);
-      taps.forEach((tap) => {
-        const index = Math.floor(tap.time * context.sampleRate);
-        if (index < channelData.length) {
-          channelData[index] = tap.gain;
-        }
-      });
-    }
-    if (!fresh) {
-      echoImpulseRef.current = impulse;
-    }
-    return impulse;
-  };
-
-  const runOfflineEnhance = (context: AudioContext, input: AudioBuffer) => {
-    const output = context.createBuffer(
-      input.numberOfChannels,
-      input.length,
-      input.sampleRate
-    );
-    const dt = 1 / input.sampleRate;
-    const hpCutoff = 140;
-    const lpCutoff = 6200;
-    const hpRc = 1 / (2 * Math.PI * hpCutoff);
-    const lpRc = 1 / (2 * Math.PI * lpCutoff);
-    const hpAlpha = hpRc / (hpRc + dt);
-    const lpAlpha = dt / (lpRc + dt);
-    const presenceCutoff = 2400;
-    const presenceRc = 1 / (2 * Math.PI * presenceCutoff);
-    const presenceAlpha = dt / (presenceRc + dt);
-
-    for (let ch = 0; ch < input.numberOfChannels; ch += 1) {
-      const src = input.getChannelData(ch);
-      const dst = output.getChannelData(ch);
-      let prevIn = 0;
-      let prevHp = 0;
-      let prevLp = 0;
-      let prevPresenceLp = 0;
-      let envelope = 0;
-      let noiseEstimate = 0.01;
-      for (let i = 0; i < src.length; i += 1) {
-        const sample = src[i];
-        const hp = hpAlpha * (prevHp + sample - prevIn);
-        prevIn = sample;
-        prevHp = hp;
-
-        prevPresenceLp = prevPresenceLp + presenceAlpha * (hp - prevPresenceLp);
-        const presenceBand = hp - prevPresenceLp;
-        const presence = hp + presenceBand * 0.5;
-
-        envelope = envelope * 0.99 + Math.abs(presence) * 0.01;
-        if (envelope < noiseEstimate * 3.0) {
-          noiseEstimate = noiseEstimate * 0.996 + envelope * 0.004;
-        }
-        const gateThreshold = noiseEstimate * 5.2 + 0.004;
-        const gateRange = 0.006;
-        let gate = 1;
-        if (envelope < gateThreshold) {
-          gate = Math.max(0, (envelope - (gateThreshold - gateRange)) / gateRange);
-          gate = gate * gate * gate;
-        }
-        const gated = presence * gate;
-
-        prevLp = prevLp + lpAlpha * (gated - prevLp);
-        dst[i] = Math.max(-1, Math.min(1, prevLp));
-      }
-    }
-
-    return output;
-  };
-
-  const encodeBufferAsWav = (buffer: AudioBuffer) => {
-    const channels = buffer.numberOfChannels;
-    const sampleRate = buffer.sampleRate;
-    const totalSamples = buffer.length;
-    const bytesPerSample = 2;
-    const blockAlign = channels * bytesPerSample;
-    const byteRate = sampleRate * blockAlign;
-    const dataSize = totalSamples * blockAlign;
-    const wav = new ArrayBuffer(44 + dataSize);
-    const view = new DataView(wav);
-
-    const writeAscii = (offset: number, text: string) => {
-      for (let i = 0; i < text.length; i += 1) {
-        view.setUint8(offset + i, text.charCodeAt(i));
-      }
-    };
-
-    writeAscii(0, 'RIFF');
-    view.setUint32(4, 36 + dataSize, true);
-    writeAscii(8, 'WAVE');
-    writeAscii(12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, channels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, byteRate, true);
-    view.setUint16(32, blockAlign, true);
-    view.setUint16(34, 16, true);
-    writeAscii(36, 'data');
-    view.setUint32(40, dataSize, true);
-
-    const channelData = Array.from({ length: channels }, (_, ch) => buffer.getChannelData(ch));
-    let offset = 44;
-    for (let i = 0; i < totalSamples; i += 1) {
-      for (let ch = 0; ch < channels; ch += 1) {
-        const sample = Math.max(-1, Math.min(1, channelData[ch][i]));
-        const intSample = sample < 0 ? sample * 32768 : sample * 32767;
-        view.setInt16(offset, intSample, true);
-        offset += 2;
-      }
-    }
-
-    return new Uint8Array(wav);
-  };
-
-  const renderBufferToFileWithEffects = async ({
-    buffer,
-    withEcho,
-    withReverb,
-  }: {
-    buffer: AudioBuffer;
-    withEcho: boolean;
-    withReverb: boolean;
-  }) => {
-    const tailPadding = Math.floor(buffer.sampleRate * 1.2);
-    const renderContext = new OfflineAudioContext(
-      buffer.numberOfChannels,
-      buffer.length + tailPadding,
-      buffer.sampleRate
-    );
-    const source = renderContext.createBufferSource();
-    source.buffer = buffer;
-    let tail: AudioNode = source;
-
-    if (withEcho) {
-      const echo = renderContext.createConvolver();
-      echo.buffer = createEchoImpulse(renderContext, true);
-      tail.connect(echo);
-      tail = echo;
-    }
-
-    if (withReverb) {
-      const reverb = renderContext.createConvolver();
-      reverb.buffer = createReverbImpulse(renderContext, true);
-      tail.connect(reverb);
-      tail = reverb;
-    }
-
-    tail.connect(renderContext.destination);
-    source.start();
-    const rendered = await renderContext.startRendering();
-    const wavBytes = encodeBufferAsWav(rendered);
-    const processedDir = new Directory(Paths.cache, 'processed-recordings');
-    if (!processedDir.exists) {
-      processedDir.create({ intermediates: true, idempotent: true });
-    }
-    const output = new File(processedDir, `processed-${Date.now()}.wav`);
-    output.create({ intermediates: true, overwrite: true });
-    output.write(wavBytes);
-    return output.uri;
-  };
-
-  const stopCurrentPlayback = (resetProgress: boolean, preservePosition = false) => {
+  const stopPreviewProgressTimer = () => {
     if (progressTimerRef.current) {
       clearInterval(progressTimerRef.current);
       progressTimerRef.current = null;
     }
-    const currentBuffer = decodedBufferRef.current;
-    if (preservePosition && currentBuffer) {
-      const elapsedSinceStart = (Date.now() - playbackStartedAtRef.current) / 1000;
-      const nextPosition = Math.min(
-        currentBuffer.duration,
-        playbackStartOffsetRef.current + Math.max(0, elapsedSinceStart)
-      );
-      pausedPositionRef.current = nextPosition;
-      setProgress(currentBuffer.duration > 0 ? nextPosition / currentBuffer.duration : 0);
+  };
+
+  const stopCurrentPlayback = (resetProgress: boolean, preservePosition = false) => {
+    stopPreviewProgressTimer();
+
+    if (previewPlayerRef.current) {
+      if (preservePosition) {
+        const duration = previewPlayerRef.current.duration || 0;
+        const current = previewPlayerRef.current.currentTime || 0;
+        pausedPositionRef.current = current;
+        setProgress(duration > 0 ? Math.min(1, current / duration) : 0);
+        previewPlayerRef.current.pause();
+        clearLockScreenControls(previewPlayerRef.current);
+      } else {
+        pausedPositionRef.current = 0;
+        clearLockScreenControls(previewPlayerRef.current);
+        previewPlayerRef.current.remove();
+        previewPlayerRef.current = null;
+        previewSourceKeyRef.current = '';
+      }
     } else if (!preservePosition) {
       pausedPositionRef.current = 0;
     }
-    if (sourceNodeRef.current) {
-      manualStopRef.current = true;
-      sourceNodeRef.current.stop();
-      sourceNodeRef.current.disconnect();
-      sourceNodeRef.current = null;
-    }
+
     setIsPlaying(false);
     if (resetProgress) {
       setProgress(0);
     }
   };
 
-  const playProcessedAudio = async () => {
-    const context = audioContextRef.current;
-    const buffer = decodedBufferRef.current;
-    if (!context || !buffer) {
-      return;
-    }
-    if (context.state === 'suspended') {
-      await context.resume().catch(() => undefined);
-    }
-
-    manualStopRef.current = false;
-    const source = context.createBufferSource();
-    source.buffer = buffer;
-
-    let tail: AudioNode = source;
-
-    if (effects.echo) {
-      const echo: ConvolverNode = context.createConvolver();
-      echo.buffer = createEchoImpulse(context);
-      tail.connect(echo);
-      tail = echo;
-    }
-
-    if (effects.reverb) {
-      const reverb: ConvolverNode = context.createConvolver();
-      reverb.buffer = createReverbImpulse(context);
-      tail.connect(reverb);
-      tail = reverb;
-    }
-
-    tail.connect(context.destination);
-    sourceNodeRef.current = source;
-
-    source.onEnded = () => {
-      if (manualStopRef.current) {
-        manualStopRef.current = false;
+  const startPreviewProgressTimer = () => {
+    stopPreviewProgressTimer();
+    progressTimerRef.current = setInterval(() => {
+      const active = previewPlayerRef.current;
+      if (!active) {
         return;
       }
-      if (progressTimerRef.current) {
-        clearInterval(progressTimerRef.current);
-        progressTimerRef.current = null;
+
+      const duration = active.duration || 0;
+      const current = active.currentTime || 0;
+      const next = duration > 0 ? Math.min(1, current / duration) : 0;
+      setProgress(next);
+
+      if (!active.playing && duration > 0 && current >= duration - 0.05) {
+        clearLockScreenControls(active);
+        active.remove();
+        previewPlayerRef.current = null;
+        previewSourceKeyRef.current = '';
+        pausedPositionRef.current = 0;
+        setIsPlaying(false);
+        setProgress(1);
+        stopPreviewProgressTimer();
       }
-      source.disconnect();
-      sourceNodeRef.current = null;
-      setIsPlaying(false);
-      setProgress(1);
-      pausedPositionRef.current = 0;
-    };
+    }, 80);
+  };
+
+  const getPreviewSourceKey = () =>
+    [
+      audioUri,
+      effects.enhance ? 'enhance:on' : 'enhance:off',
+      effects.echo ? 'echo:on' : 'echo:off',
+      effects.reverb ? 'reverb:on' : 'reverb:off',
+      `trim:${trimStartRatio.toFixed(4)}-${trimEndRatio.toFixed(4)}`,
+    ].join('|');
+
+  const getPreviewPlaybackUri = async () => {
+    if (!audioUri) {
+      return null;
+    }
+
+    const needsRenderedPreview = effects.enhance || effects.echo || effects.reverb || hasTrimSelection;
+    if (!needsRenderedPreview) {
+      return audioUri;
+    }
+
+    const bufferForPreview = effects.enhance
+      ? decodedBufferRef.current
+      : originalBufferRef.current ?? decodedBufferRef.current;
+
+    if (!bufferForPreview) {
+      return null;
+    }
+
+    return renderBufferToFileWithEffects({
+      buffer: getTrimmedBuffer(bufferForPreview),
+      withEcho: effects.echo,
+      withReverb: effects.reverb,
+      reverbGain: 5,
+    });
+  };
+
+  const playProcessedAudio = async () => {
+    const targetUri = await getPreviewPlaybackUri();
+    if (!targetUri) {
+      return;
+    }
+
+    const nextSourceKey = getPreviewSourceKey();
+    await configureMixedPlaybackAsync();
+
+    if (previewPlayerRef.current && previewSourceKeyRef.current === nextSourceKey) {
+      const startOffset = pausedPositionRef.current;
+      if (startOffset > 0) {
+        await previewPlayerRef.current.seekTo(startOffset).catch(() => undefined);
+      } else {
+        await previewPlayerRef.current.seekTo(0).catch(() => undefined);
+      }
+      activateLockScreenControls(previewPlayerRef.current, {
+        title: message,
+        albumTitle: 'Preview Recording',
+      });
+      previewPlayerRef.current.play();
+      setIsPlaying(true);
+      startPreviewProgressTimer();
+      return;
+    }
+
+    if (previewPlayerRef.current) {
+      clearLockScreenControls(previewPlayerRef.current);
+      previewPlayerRef.current.remove();
+      previewPlayerRef.current = null;
+    }
+
+    const player = createAudioPlayer(targetUri, { updateInterval: 100 });
+    previewPlayerRef.current = player;
+    previewSourceKeyRef.current = nextSourceKey;
 
     const startOffset = pausedPositionRef.current;
-    source.start(0, startOffset);
-    setIsPlaying(true);
-    playbackStartOffsetRef.current = startOffset;
-    setProgress(buffer.duration > 0 ? startOffset / buffer.duration : 0);
-    playbackStartedAtRef.current = Date.now();
+    if (startOffset > 0) {
+      await player.seekTo(startOffset).catch(() => undefined);
+    }
 
-    progressTimerRef.current = setInterval(() => {
-      const elapsed =
-        playbackStartOffsetRef.current + (Date.now() - playbackStartedAtRef.current) / 1000;
-      const next = buffer.duration > 0 ? Math.min(1, elapsed / buffer.duration) : 0;
-      setProgress(next);
-    }, 80);
+    activateLockScreenControls(player, {
+      title: message,
+      albumTitle: 'Preview Recording',
+    });
+    player.play();
+    setIsPlaying(true);
+    startPreviewProgressTimer();
   };
 
   const startRecording = async () => {
@@ -503,10 +434,11 @@ export default function RecordingScreen() {
       }
     }
     try {
+      stopCurrentPlayback(true);
       await setAudioModeAsync({
         playsInSilentMode: true,
         allowsRecording: true,
-        shouldPlayInBackground: true,
+        ...(Platform.OS === 'android' ? { shouldPlayInBackground: true } : {}),
       });
       await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
@@ -518,23 +450,46 @@ export default function RecordingScreen() {
   const stopRecording = async () => {
     try {
       await audioRecorder.stop();
-      const audioUri = audioRecorder.uri ?? recorderState.url;
-      if (audioUri) {
-        setAudioUri(audioUri);
-        setHasRecorded(true);
+      const recordedUri = audioRecorder.uri ?? recorderState.url;
+      if (recordedUri) {
+        stopCurrentPlayback(true);
+        setHasRecorded(false);
+        setIsPlaying(false);
+        setProgress(0);
+        setIsProcessingRecording(true);
+        setIsApplyingEnhance(true);
+        let nextUri = recordedUri;
+        const context = audioContextRef.current;
+
+        if (context) {
+          try {
+            const recordedBuffer = await context.decodeAudioData(recordedUri);
+            const polishedBuffer = normalizeAndCompressVoice(context, recordedBuffer);
+            const processedUri = await renderBufferToFileWithEffects({
+              buffer: polishedBuffer,
+              withEcho: false,
+              withReverb: false,
+            });
+            if (processedUri) {
+              nextUri = processedUri;
+            }
+          } catch {
+            nextUri = recordedUri;
+          }
+        }
+
+        setAudioUri(nextUri);
       }
-      await setAudioModeAsync({
-        playsInSilentMode: true,
-        allowsRecording: false,
-        shouldPlayInBackground: true,
-      });
+      await configureMixedPlaybackAsync();
     } catch {
+      setIsApplyingEnhance(false);
+      setIsProcessingRecording(false);
       return;
     }
   };
 
   const togglePlayback = async () => {
-    if (!decodedBufferRef.current) {
+    if (!audioUri) {
       return;
     }
     if (isPlaying) {
@@ -544,12 +499,51 @@ export default function RecordingScreen() {
     await playProcessedAudio();
   };
 
+  const scrubToRatio = (globalRatio: number) => {
+    if (trimmedDuration <= 0) {
+      pausedPositionRef.current = 0;
+      setProgress(0);
+      return;
+    }
+
+    const boundedRatio = clamp(globalRatio, trimStartRatio, trimEndRatio);
+    const nextProgress =
+      (boundedRatio - trimStartRatio) / Math.max(trimEndRatio - trimStartRatio, TRIM_EPSILON);
+    pausedPositionRef.current = nextProgress * trimmedDuration;
+    setProgress(nextProgress);
+  };
+
+  const handleTrimDragStart = () => {
+    stopCurrentPlayback(true);
+    pausedPositionRef.current = 0;
+    setProgress(0);
+  };
+
+  const handleTrimChange = (nextStartRatio: number, nextEndRatio: number) => {
+    setTrimStartRatio(nextStartRatio);
+    setTrimEndRatio(nextEndRatio);
+  };
+
+  const handleScrubStart = () => {
+    if (isPlaying) {
+      stopCurrentPlayback(false, true);
+    }
+  };
+
+  const handleScrubCommit = (ratio: number) => {
+    scrubToRatio(ratio);
+    if (previewPlayerRef.current) {
+      previewPlayerRef.current.seekTo(pausedPositionRef.current).catch(() => undefined);
+    }
+  };
+
   const toggleEffect = async (effect: keyof typeof effects) => {
     if (isApplyingEnhance) {
       return;
     }
 
     if (effect !== 'enhance') {
+      stopCurrentPlayback(true);
       setEffects((prev) => ({ ...prev, [effect]: !prev[effect] }));
       return;
     }
@@ -572,9 +566,21 @@ export default function RecordingScreen() {
     }
 
     stopCurrentPlayback(true);
+    const preparedEnhancedBuffer = enhancedBufferRef.current;
+    if (preparedEnhancedBuffer) {
+      decodedBufferRef.current = preparedEnhancedBuffer;
+      enhanceAppliedRef.current = true;
+      setEffects((prev) => ({ ...prev, enhance: true }));
+      return;
+    }
+
     setIsApplyingEnhance(true);
     try {
-      const enhanced = runOfflineEnhance(context, source);
+      const enhanced = await prepareEnhancedBuffer(source);
+      if (!enhanced) {
+        return;
+      }
+      enhancedBufferRef.current = enhanced;
       decodedBufferRef.current = enhanced;
       enhanceAppliedRef.current = true;
       setEffects((prev) => ({ ...prev, enhance: true }));
@@ -586,12 +592,16 @@ export default function RecordingScreen() {
   const handleDelete = () => {
     stopCurrentPlayback(true);
     setAudioUri('');
+    setAudioDuration(0);
     setHasRecorded(false);
     setIsPlaying(false);
     setIsApplyingEnhance(false);
+    setTrimStartRatio(0);
+    setTrimEndRatio(1);
     setEffects({ enhance: false, echo: false, reverb: false });
     decodedBufferRef.current = null;
     originalBufferRef.current = null;
+    enhancedBufferRef.current = null;
     enhanceAppliedRef.current = false;
   };
 
@@ -599,15 +609,24 @@ export default function RecordingScreen() {
     stopCurrentPlayback(false);
     const context = audioContextRef.current;
     const sourceBuffer = decodedBufferRef.current;
-    const shouldBakeAnyEffect = effects.enhance || effects.echo || effects.reverb;
+    const shouldBakeAnyEffect = effects.enhance || effects.echo || effects.reverb || hasTrimSelection;
     if (effects.enhance && !enhanceAppliedRef.current && context && sourceBuffer) {
-      setIsApplyingEnhance(true);
-      try {
-        const enhanced = runOfflineEnhance(context, sourceBuffer);
-        decodedBufferRef.current = enhanced;
+      const preparedEnhancedBuffer = enhancedBufferRef.current;
+      if (preparedEnhancedBuffer) {
+        decodedBufferRef.current = preparedEnhancedBuffer;
         enhanceAppliedRef.current = true;
-      } finally {
-        setIsApplyingEnhance(false);
+      } else {
+        setIsApplyingEnhance(true);
+        try {
+          const enhanced = await prepareEnhancedBuffer(sourceBuffer);
+          if (enhanced) {
+            enhancedBufferRef.current = enhanced;
+            decodedBufferRef.current = enhanced;
+            enhanceAppliedRef.current = true;
+          }
+        } finally {
+          setIsApplyingEnhance(false);
+        }
       }
     }
     if (!audioUri) {
@@ -620,9 +639,10 @@ export default function RecordingScreen() {
 
     if (shouldBakeAnyEffect && bufferForExport) {
       const processedPath = await renderBufferToFileWithEffects({
-        buffer: bufferForExport,
+        buffer: getTrimmedBuffer(bufferForExport),
         withEcho: effects.echo,
         withReverb: effects.reverb,
+        reverbGain: 5,
       });
       if (processedPath) {
         uriToSave = processedPath;
@@ -668,7 +688,16 @@ export default function RecordingScreen() {
       style={styles.container}
     >
       <View style={styles.container}>
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
+      <Modal transparent visible={isProcessingRecording} animationType="fade">
+        <View style={styles.processingOverlay}>
+          <View style={styles.processingCard}>
+            <ActivityIndicator size="large" color="#FFFFFF" />
+            <Text style={styles.processingTitle}>Processing audio...</Text>
+            <Text style={styles.processingText}>Cleaning noise and preparing your edit.</Text>
+          </View>
+        </View>
+      </Modal>
       <LinearGradient
         colors={[Colors.background, '#1A0B2E', Colors.background]}
         locations={[0, 0.4, 1]}
@@ -683,12 +712,12 @@ export default function RecordingScreen() {
 
       <View style={styles.content}>
         <View style={styles.cardGlowWrapper}>
-          <AffirmationCard glowColor={pillar.color}>
+          <AffirmationCard glowColor={pillar.color} borderColor={pillar.color}>
             {isComposing ? (
               <TextInput
                 style={styles.messageInput}
                 placeholder="I am..."
-                placeholderTextColor="#9A9A9A"
+                placeholderTextColor={Colors.text}
                 multiline
                 value={draftMessage}
                 onChangeText={setDraftMessage}
@@ -735,6 +764,7 @@ export default function RecordingScreen() {
             >
               <TouchableOpacity
                 style={styles.recordButton}
+                disabled={isApplyingEnhance}
                 onPress={toggleRecording}
                 onPressIn={() => setGlowState('press')}
                 onPressOut={() => setGlowState('default')}
@@ -747,7 +777,11 @@ export default function RecordingScreen() {
               </TouchableOpacity>
             </AnimatedGlow>
             <Text style={styles.hintText}>
-              {recorderState.isRecording ? 'recording...' : 'tap to record your affirmation'}
+              {isApplyingEnhance
+                ? 'processing...'
+                : recorderState.isRecording
+                  ? 'recording...'
+                  : 'tap to record your affirmation'}
             </Text>
           </Animated.View>
 
@@ -758,46 +792,59 @@ export default function RecordingScreen() {
               { opacity: reviewOpacity, transform: [{ translateY: reviewTranslate }] },
             ]}
           >
-            <View style={styles.playbackRow}>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+            <View style={styles.reviewTop}>
+              <TrimEditor
+                audioDuration={audioDuration}
+                minTrimGapRatio={minTrimGapRatio}
+                onScrubCommit={handleScrubCommit}
+                onScrubStart={handleScrubStart}
+                onTrimChange={handleTrimChange}
+                onTrimDragStart={handleTrimDragStart}
+                playheadRatio={playheadRatio}
+                trimEndRatio={trimEndRatio}
+                trimStartRatio={trimStartRatio}
+              />
+
+              <View style={styles.playButtonRow}>
+                <TouchableOpacity style={styles.playButton} onPress={togglePlayback}>
+                  <Ionicons name={isPlaying ? 'pause' : 'play'} size={22} color="#FFFFFF" />
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity style={styles.playButton} onPress={togglePlayback}>
-                <Ionicons name={isPlaying ? 'pause' : 'play'} size={22} color="#FFFFFF" />
-              </TouchableOpacity>
             </View>
 
-            <View style={styles.effectsRow}>
-              <TouchableOpacity
-                style={[styles.effectBtn, effects.enhance && styles.effectBtnActive]}
-                onPress={() => toggleEffect('enhance')}
-              >
-                <Text style={styles.effectIcon}>✨</Text>
-                <Text style={styles.effectText}>Enhance</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.effectBtn, effects.echo && styles.effectBtnActive]}
-                onPress={() => toggleEffect('echo')}
-              >
-                <Text style={styles.effectIcon}>🔉</Text>
-                <Text style={styles.effectText}>Echo</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.effectBtn, effects.reverb && styles.effectBtnActive]}
-                onPress={() => toggleEffect('reverb')}
-              >
-                <Text style={styles.effectIcon}>✣</Text>
-                <Text style={styles.effectText}>Reverb</Text>
-              </TouchableOpacity>
-            </View>
+            <View style={styles.reviewBottom}>
+              <View style={styles.effectsRow}>
+                <TouchableOpacity
+                  style={[styles.effectBtn, effects.enhance && styles.effectBtnActive]}
+                  onPress={() => toggleEffect('enhance')}
+                >
+                  <Text style={styles.effectIcon}>✨</Text>
+                  <Text style={styles.effectText}>Enhance</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.effectBtn, effects.echo && styles.effectBtnActive]}
+                  onPress={() => toggleEffect('echo')}
+                >
+                  <Text style={styles.effectIcon}>🔉</Text>
+                  <Text style={styles.effectText}>Echo</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.effectBtn, effects.reverb && styles.effectBtnActive]}
+                  onPress={() => toggleEffect('reverb')}
+                >
+                  <Text style={styles.effectIcon}>✣</Text>
+                  <Text style={styles.effectText}>Reverb</Text>
+                </TouchableOpacity>
+              </View>
 
-            <View style={styles.actionsRow}>
-              <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
-                <Ionicons name="trash-outline" size={26} color={Colors.textSecondary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-                <Text style={styles.saveText}>{isApplyingEnhance ? 'Applying...' : 'Save'}</Text>
-              </TouchableOpacity>
+              <View style={styles.actionsRow}>
+                <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
+                  <Ionicons name="trash-outline" size={26} color={Colors.textSecondary} />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
+                  <Text style={styles.saveText}>{isApplyingEnhance ? 'Applying...' : 'Save'}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </Animated.View>
           </Animated.View>
@@ -827,7 +874,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 24,
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     paddingBottom: 48,
   },
   cardGlowWrapper: {
@@ -853,9 +900,10 @@ const styles = StyleSheet.create({
   },
   controlsShell: {
     width: '100%',
-    minHeight: 280,
+    flex: 1,
     position: 'relative',
     justifyContent: 'center',
+    marginTop: 12,
   },
   composeLayer: {
     position: 'absolute',
@@ -866,7 +914,7 @@ const styles = StyleSheet.create({
   },
   controlsLayer: {
     width: '100%',
-    minHeight: 280,
+    flex: 1,
     justifyContent: 'center',
   },
   doneBtn: {
@@ -891,10 +939,22 @@ const styles = StyleSheet.create({
   },
   reviewLayer: {
     position: 'absolute',
+    top: 0,
+    bottom: 0,
     left: 0,
     right: 0,
+    justifyContent: 'space-between',
+    alignItems: 'stretch',
+  },
+  reviewTop: {
+    width: '100%',
     alignItems: 'center',
-    gap: 22,
+    gap: 12,
+    paddingTop: 4,
+  },
+  reviewBottom: {
+    width: '100%',
+    gap: 12,
   },
   recordButton: {
     width: 72,
@@ -910,23 +970,9 @@ const styles = StyleSheet.create({
     color: Colors.text,
     textAlign: 'center',
   },
-  playbackRow: {
+  playButtonRow: {
     width: '100%',
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-  },
-  progressTrack: {
-    flex: 1,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#C6C6C6',
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 10,
-    backgroundColor: '#1398FF',
   },
   playButton: {
     width: 48,
@@ -988,5 +1034,35 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.serifBold,
     fontSize: 26,
     color: '#FFFFFF',
+  },
+  processingOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(4, 6, 10, 0.74)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  processingCard: {
+    width: '100%',
+    maxWidth: 320,
+    borderRadius: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    backgroundColor: 'rgba(17, 18, 24, 0.96)',
+    alignItems: 'center',
+    gap: 12,
+  },
+  processingTitle: {
+    fontFamily: Fonts.serifBold,
+    fontSize: 24,
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  processingText: {
+    fontFamily: Fonts.mono,
+    fontSize: 12,
+    lineHeight: 18,
+    color: Colors.textSecondary,
+    textAlign: 'center',
   },
 });

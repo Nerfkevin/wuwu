@@ -1,48 +1,118 @@
 
-import React, { useState } from 'react';
-import { StyleSheet, Text, View, Pressable } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Dimensions, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import AnimatedGlow, { GlowEvent } from 'react-native-animated-glow';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
+import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
 import { Colors, Fonts } from '@/constants/theme';
 import { GlowPresets } from '@/constants/glow';
-import { Ionicons } from '@expo/vector-icons';
+
+const { width } = Dimensions.get('window');
+const BUTTON_SIZE = width * 0.55;
 
 export default function HomeScreen() {
   const router = useRouter();
   const [glowState, setGlowState] = useState<GlowEvent>('default');
+  const [pressing, setPressing] = useState(false);
+  const [activated, setActivated] = useState(false);
+
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const pressScale = useRef(new Animated.Value(1)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      setActivated(false);
+      setPressing(false);
+      setGlowState('default');
+      pressScale.setValue(1);
+    }, [pressScale])
+  );
+
+  useEffect(() => {
+    if (!pressing && !activated) {
+      pulseLoopRef.current?.stop();
+      pulseLoopRef.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.1,
+            duration: 1000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 1000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      pulseLoopRef.current.start();
+    } else {
+      pulseLoopRef.current?.stop();
+      pulseAnim.setValue(1);
+    }
+
+    return () => {
+      pulseLoopRef.current?.stop();
+    };
+  }, [activated, pressing, pulseAnim]);
+
+  const handlePressIn = () => {
+    setPressing(true);
+    setGlowState('press');
+
+    Animated.timing(pressScale, {
+      toValue: 0.9,
+      duration: 100,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    setPressing(false);
+    setGlowState('default');
+
+    Animated.timing(pressScale, {
+      toValue: 1.2,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+
+    if (!activated) {
+      setActivated(true);
+      router.push('/session/selection');
+    }
+  };
 
   return (
-    <View style={styles.container}>
-      {/* Header Icons */}
-      <View style={styles.header}>
-        <View /> 
-        {/* Just spacing, icons on right */}
-        <View style={styles.headerIcons}>
-           {/* Library and Profile are in tabs, but spec says "Top right: Library icon + Profile icon". 
-               Since we have tabs, maybe these are shortcuts or redundant. I'll include them as per spec. */}
-          <Pressable onPress={() => router.push('/(tabs)/library')} style={styles.iconButton}>
-             <Ionicons name="library-outline" size={24} color={Colors.text} />
-          </Pressable>
-          <Pressable onPress={() => router.push('/(tabs)/profile')} style={styles.iconButton}>
-             <Ionicons name="person-outline" size={24} color={Colors.text} />
-          </Pressable>
-        </View>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.titleContainer}>
+        <Text style={styles.title}>Wu-Wu</Text>
       </View>
 
       <View style={styles.content}>
-        <Text style={styles.title}>Wu-Wu</Text>
-        
-        <View style={styles.buttonContainer}>
+        <Animated.View
+          style={[
+            styles.buttonContainer,
+            {
+              transform: [
+                { scale: Animated.multiply(pressing ? scaleAnim : pulseAnim, pressScale) },
+              ],
+            },
+          ]}>
           <AnimatedGlow 
-            preset={GlowPresets.chakra(90)}
+            preset={GlowPresets.chakra(BUTTON_SIZE / 2)}
             activeState={glowState}
           >
             <Pressable 
               style={styles.mainButton}
-              onPress={() => router.push('/session/selection')}
-              onPressIn={() => setGlowState('press')}
-              onPressOut={() => setGlowState('default')}
+              onPressIn={handlePressIn}
+              onPressOut={handlePressOut}
             >
               <LinearGradient
                 colors={Colors.chakra.gradient}
@@ -54,11 +124,7 @@ export default function HomeScreen() {
               </LinearGradient>
             </Pressable>
           </AnimatedGlow>
-        </View>
-
-        <Text style={styles.footerText}>
-          Your voice. Your frequencies. Your transformation.
-        </Text>
+        </Animated.View>
       </View>
       
       {/* Subtle bottom gradient */}
@@ -67,7 +133,7 @@ export default function HomeScreen() {
         style={styles.bottomGradient}
         pointerEvents="none"
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -75,26 +141,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
-    justifyContent: 'space-between',
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 20,
-    marginTop: 40,
-  },
-  headerIcons: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  iconButton: {
-    padding: 8,
+  titleContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingTop: 62,
+    zIndex: 1,
   },
   content: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 60,
   },
   title: {
     fontFamily: Fonts.serif,
@@ -105,13 +165,13 @@ const styles = StyleSheet.create({
   buttonContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: 200,
-    height: 200,
+    width: BUTTON_SIZE,
+    height: BUTTON_SIZE,
   },
   mainButton: {
-    width: 180,
-    height: 180,
-    borderRadius: 90,
+    width: BUTTON_SIZE,
+    height: BUTTON_SIZE,
+    borderRadius: BUTTON_SIZE / 2,
     elevation: 10,
     shadowColor: Colors.chakra.red,
     shadowOffset: { width: 0, height: 4 },
@@ -122,21 +182,13 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 90,
+    borderRadius: BUTTON_SIZE / 2,
   },
   buttonText: {
     fontFamily: Fonts.serifBold,
     fontSize: 24,
     color: Colors.text,
     textAlign: 'center',
-  },
-  footerText: {
-    fontFamily: Fonts.mono,
-    fontSize: 12,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    opacity: 0.7,
-    maxWidth: '80%',
   },
   bottomGradient: {
     position: 'absolute',

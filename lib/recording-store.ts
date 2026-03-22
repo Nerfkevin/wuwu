@@ -92,6 +92,27 @@ export const getSavedRecordings = async () => {
   return await readIndex();
 };
 
+export const reorderSavedRecordings = async (orderedIds: string[]) => {
+  const items = await readIndex();
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const reordered: SavedRecording[] = [];
+
+  for (const id of orderedIds) {
+    const item = byId.get(id);
+    if (item) {
+      reordered.push(item);
+      byId.delete(id);
+    }
+  }
+
+  if (byId.size > 0) {
+    reordered.push(...Array.from(byId.values()));
+  }
+
+  writeIndex(reordered);
+  return reordered;
+};
+
 export const getSavedRecordingById = async (id: string) => {
   const items = await readIndex();
   return items.find((item) => item.id === id) ?? null;

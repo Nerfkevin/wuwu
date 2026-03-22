@@ -4,7 +4,7 @@ import { StyleSheet, Text, View, TouchableOpacity, FlatList, Pressable } from 'r
 import { Stack, useRouter } from 'expo-router';
 import { Colors, Fonts } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
-import AnimatedGlow, { GlowEvent } from 'react-native-animated-glow';
+import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
 import { GlowPresets } from '@/constants/glow';
 
 type PillarItem = {

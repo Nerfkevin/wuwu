@@ -1,4 +1,4 @@
-import { PresetConfig } from 'react-native-animated-glow';
+import { PresetConfig } from '@/lib/animated-glow';
 import { Colors } from './theme';
 
 const withOpacity = (hexColor: string, opacity: number): string => {

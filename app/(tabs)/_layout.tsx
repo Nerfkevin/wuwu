@@ -29,7 +29,7 @@ export default function TabLayout() {
           sf="books.vertical.fill" 
           androidSrc={<VectorIcon family={Ionicons} name="library" />} 
         />
-        <Label>Library</Label>
+        <Label>Track</Label>
       </NativeTabs.Trigger>
       
       <NativeTabs.Trigger name="profile">

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Dimensions, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
-import AnimatedGlow from 'react-native-animated-glow';
+import Animated from 'react-native-reanimated';
+import AnimatedGlow from '@/lib/animated-glow';
 import { GlowPresets } from '@/constants/glow';
 
 const { height } = Dimensions.get('window');
@@ -8,19 +9,23 @@ const { height } = Dimensions.get('window');
 type AffirmationCardProps = {
   children: React.ReactNode;
   glowColor?: string;
+  borderColor?: string;
   useGlow?: boolean;
   wrapperStyle?: StyleProp<ViewStyle>;
+  cardStyle?: StyleProp<ViewStyle>;
 };
 
 export default function AffirmationCard({
   children,
   glowColor = '#FFFFFF',
+  borderColor = '#FFFFFF',
   useGlow = true,
   wrapperStyle,
+  cardStyle,
 }: AffirmationCardProps) {
   const card = (
     <View style={[styles.cardContainer, wrapperStyle]}>
-      <View style={styles.card}>{children}</View>
+      <Animated.View style={[styles.card, { borderColor }, cardStyle]}>{children}</Animated.View>
     </View>
   );
 

@@ -4,7 +4,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Fonts } from '@/constants/theme';
 import { AFFIRMATION_PILLARS, PillarKey } from '@/constants/affirmations';
-import AnimatedGlow from 'react-native-animated-glow';
+import AnimatedGlow from '@/lib/animated-glow';
 import { GlowPresets } from '@/constants/glow';
 
 const normalizeParam = (value?: string | string[]) =>
@@ -109,13 +109,13 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 24,
   },
   hero: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
     marginBottom: 18,
+    paddingHorizontal: 24,
   },
   pillarIconWrap: {
     width: 84,
