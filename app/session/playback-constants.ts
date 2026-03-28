@@ -50,14 +50,13 @@ export type AmbientNode = {
 
 export const NOISE_IDS = new Set<AmbientSoundId>(['white', 'pink', 'brown']);
 
-// Drop MP3 files into assets/sounds/ and uncomment each asset to enable:
 export const NATURE_SOUNDS: Array<{ id: AmbientSoundId; label: string; asset: number | null }> = [
-  { id: 'rain',     label: 'Rain',        asset: null /* require('../../assets/sounds/rain.mp3') */ },
-  { id: 'thunder',  label: 'Thunder',     asset: null /* require('../../assets/sounds/thunder.mp3') */ },
-  { id: 'ocean',    label: 'Ocean Waves', asset: null /* require('../../assets/sounds/ocean_waves.mp3') */ },
-  { id: 'birds',    label: 'Birds',       asset: null /* require('../../assets/sounds/birds.mp3') */ },
-  { id: 'crickets', label: 'Crickets',    asset: null /* require('../../assets/sounds/crickets.mp3') */ },
-  { id: 'campfire', label: 'Camp Fire',   asset: null /* require('../../assets/sounds/campfire.mp3') */ },
+  { id: 'rain',     label: 'Rain',        asset: require('../../assets/images/ambient/rain.mp3') },
+  { id: 'thunder',  label: 'Thunder',     asset: require('../../assets/images/ambient/thunder.mp3') },
+  { id: 'ocean',    label: 'Ocean Waves', asset: require('../../assets/images/ambient/ocean.mp3') },
+  { id: 'birds',    label: 'Birds',       asset: require('../../assets/images/ambient/birds.mp3') },
+  { id: 'crickets', label: 'Crickets',    asset: require('../../assets/images/ambient/crickets.mp3') },
+  { id: 'campfire', label: 'Camp Fire',   asset: require('../../assets/images/ambient/campfire.mp3') },
 ];
 
 export const NOISE_SOUNDS: Array<{ id: AmbientSoundId; label: string }> = [

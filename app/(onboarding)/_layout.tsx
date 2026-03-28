@@ -28,6 +28,19 @@ export default function OnboardingLayout() {
         <Stack.Screen name="screen6" />
         <Stack.Screen name="screen7" />
         <Stack.Screen name="screen8" />
+        <Stack.Screen name="screen9" />
+        <Stack.Screen name="screen10" />
+        <Stack.Screen name="screen11" />
+        <Stack.Screen name="screen12" />
+        <Stack.Screen name="screen13" />
+        <Stack.Screen name="screen14" />
+        <Stack.Screen name="screen15" />
+        <Stack.Screen name="screen16" />
+        <Stack.Screen name="screen17" />
+        <Stack.Screen name="screen18" />
+        <Stack.Screen name="screen19" />
+        <Stack.Screen name="screen20" />
+        <Stack.Screen name="screen21" />
       </Stack>
     </View>
   );

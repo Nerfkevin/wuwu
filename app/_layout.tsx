@@ -11,6 +11,9 @@ import { Arapey_400Regular, Arapey_400Regular_Italic } from '@expo-google-fonts/
 import { SpaceMono_400Regular } from '@expo-google-fonts/space-mono';
 import { Colors, Fonts } from '@/constants/theme';
 import { configureMixedPlaybackAsync } from '@/lib/audio-playback';
+import Superwall from '@superwall/react-native-superwall';
+
+const SUPERWALL_API_KEY_IOS = 'YOUR_SUPERWALL_IOS_KEY';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -30,6 +33,10 @@ export default function RootLayout() {
 
   useEffect(() => {
     void configureMixedPlaybackAsync();
+  }, []);
+
+  useEffect(() => {
+    Superwall.configure({ apiKey: SUPERWALL_API_KEY_IOS });
   }, []);
 
   if (!loaded) {

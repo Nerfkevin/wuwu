@@ -57,7 +57,7 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 
 export default function RecordingScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ text?: string; pillar?: string; writeOwn?: string }>();
+  const params = useLocalSearchParams<{ text?: string; pillar?: string; writeOwn?: string; onboarding?: string }>();
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(audioRecorder);
   const [audioUri, setAudioUri] = useState('');
@@ -654,8 +654,12 @@ export default function RecordingScreen() {
       text: message,
       pillar: pillarKey,
     });
-    router.dismissAll();
-    router.push('/(tabs)/library');
+    if (params.onboarding === '1') {
+      router.back();
+    } else {
+      router.dismissAll();
+      router.push('/(tabs)/library');
+    }
   };
 
   const toggleRecording = async () => {

@@ -18,6 +18,7 @@ import { Colors, Fonts } from '@/constants/theme';
 import { GlowPresets } from '@/constants/glow';
 import { getPlaylists, Playlist, ALL_PLAYLIST_ID } from '@/lib/playlist-store';
 import { getLastPlaylistId, setLastPlaylistId } from '@/lib/session-prefs';
+import { useFrequencyPreview } from '@/lib/use-frequency-preview';
 
 const { width } = Dimensions.get('window');
 const ITEM_SIZE = (width - 40 - 24) / 3; // (screen width - padding - gaps) / 3
@@ -91,13 +92,14 @@ export default function SelectionScreen() {
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [chosenPlaylistId, setChosenPlaylistId] = useState<string>(ALL_PLAYLIST_ID);
+  const { previewFrequency, previewBrainwave } = useFrequencyPreview();
 
   const renderFreqItem = ({ item }: { item: typeof FREQUENCIES[0] }) => {
     return (
       <FrequencyItem 
         item={item} 
         isSelected={selectedFreq === item.id} 
-        onSelect={() => setSelectedFreq(item.id)} 
+        onSelect={() => { setSelectedFreq(item.id); previewFrequency(item.id, selectedBg); }} 
       />
     );
   };
@@ -187,7 +189,7 @@ export default function SelectionScreen() {
                       { borderColor: item.color },
                       selectedBrainwave === item.id && { backgroundColor: item.color + '20' },
                     ]}
-                    onPress={() => setSelectedBrainwave(item.id)}
+                    onPress={() => { setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
                   >
                     <Text style={styles.freqHz}>{item.name}</Text>
                     <Text style={styles.brainwaveHz}>{item.hz}</Text>
@@ -209,7 +211,7 @@ export default function SelectionScreen() {
                       { borderColor: item.color },
                       selectedBrainwave === item.id && { backgroundColor: item.color + '20' },
                     ]}
-                    onPress={() => setSelectedBrainwave(item.id)}
+                    onPress={() => { setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
                   >
                     <Text style={styles.freqHz}>{item.name}</Text>
                     <Text style={styles.brainwaveHz}>{item.hz}</Text>

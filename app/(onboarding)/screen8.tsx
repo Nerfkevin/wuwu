@@ -7,6 +7,7 @@ import {
   Dimensions,
   Easing,
 } from "react-native";
+import * as Haptics from "expo-haptics";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MeshGradientView } from "expo-mesh-gradient";
 import Svg, { Circle, Defs, LinearGradient, Stop } from "react-native-svg";
@@ -21,15 +22,23 @@ const isSmallDevice = width < 380;
 const PHASES = [
   "analyzing your responses...",
   "locking in your goals...",
-  "personalising your affirmations...",
+  "personalising affirmations...",
   "dialing in your routine...",
-  "making sure this is tailored to you...",
+  "tailoring to your needs...",
   "syncing your plan...",
   "alright, you're set!",
 ];
 
-// Varied durations per phase (ms) — last one snaps fast
-const PHASE_DURATIONS = [900, 1200, 750, 1050, 800, 1100, 400];
+// Phases 0-5 fire while ring fills (sum = 12000ms)
+// Phase 6 ("alright, you're set!") fires 100ms AFTER ring hits 100%
+const PHASE_DURATIONS = [2333, 1167, 1833, 2500, 2000, 2167];
+
+// 12 ring segments with organic speed variation — sum = 12000ms
+const RING_DURATIONS = [
+  1000,  500, 1333,  417,  // slow, quick, settle, burst
+  1167,  583, 1500,  417,  // drift, snap, long crawl, burst
+  1000,  667, 1250, 2166,  // medium, drift, slow, dreamy finish
+];
 
 // ─── ring constants ──────────────────────────────────────────────────────────
 
@@ -187,7 +196,6 @@ export default function Screen8() {
   const percentAnim = useRef(new Animated.Value(0)).current;
 
   // Per-phase text animations
-  const textOpacity = useRef(new Animated.Value(0)).current;
   const textScale = useRef(new Animated.Value(1)).current;
   const textColorAnim = useRef(new Animated.Value(0)).current;
 
@@ -196,78 +204,91 @@ export default function Screen8() {
     runPhases();
   }, []);
 
-  const runPhases = useCallback(async () => {
-    for (let i = 0; i < PHASES.length; i++) {
-      await new Promise<void>((resolve) => {
-        // Reset per-phase text
-        textOpacity.setValue(0);
-        textScale.setValue(1);
-        textColorAnim.setValue(0);
-        setCurrentPhase(i);
-
-        const progressTo = (i + 1) / PHASES.length;
-        const dur = PHASE_DURATIONS[i];
-
-        // Fade in phase text
-        Animated.timing(textOpacity, {
-          toValue: 1,
-          duration: 320,
-          useNativeDriver: false,
-        }).start();
-
-        // Ring fills up
-        Animated.timing(progressAnim, {
-          toValue: progressTo,
-          duration: dur * 0.82,
-          useNativeDriver: false,
-          easing: Easing.out(Easing.cubic),
-        }).start();
-
-        // Percentage counter follows ring
-        Animated.timing(percentAnim, {
-          toValue: progressTo * 100,
-          duration: dur * 0.82,
-          useNativeDriver: false,
-          easing: Easing.out(Easing.cubic),
-        }).start();
-
-        // After phase duration: mark done + animate text green then fade out
-        setTimeout(() => {
-          setCompleted((prev) => {
-            const next = [...prev];
-            next[i] = true;
-            return next;
-          });
-
-          Animated.parallel([
-            Animated.spring(textScale, {
-              toValue: 1.07,
-              useNativeDriver: false,
-              tension: 280,
-              friction: 9,
-            }),
-            Animated.timing(textColorAnim, {
-              toValue: 1,
-              duration: 230,
-              useNativeDriver: false,
-            }),
-          ]).start(() => {
-            setTimeout(() => {
-              Animated.timing(textOpacity, {
-                toValue: 0,
-                duration: 280,
-                useNativeDriver: false,
-              }).start(() => {
-                if (i === PHASES.length - 1) {
-                  setTimeout(() => replaceTo("/(tabs)"), 350);
-                }
-                resolve();
-              });
-            }, 150);
-          });
-        }, dur);
+  const runPhases = useCallback(() => {
+    // ── continuous ring fill — fine-grained segments ──────────────────────────
+    const totalRing = RING_DURATIONS.reduce((a, b) => a + b, 0);
+    let ringAccum = 0;
+    const ringSegments = RING_DURATIONS.map((dur) => {
+      ringAccum += dur;
+      return Animated.timing(progressAnim, {
+        toValue: ringAccum / totalRing,
+        duration: dur,
+        useNativeDriver: false,
+        easing: Easing.inOut(Easing.quad),
       });
-    }
+    });
+    let pctAccum = 0;
+    const pctSegments = RING_DURATIONS.map((dur) => {
+      pctAccum += dur;
+      return Animated.timing(percentAnim, {
+        toValue: (pctAccum / totalRing) * 100,
+        duration: dur,
+        useNativeDriver: false,
+        easing: Easing.inOut(Easing.quad),
+      });
+    });
+    Animated.sequence(ringSegments).start();
+    Animated.sequence(pctSegments).start();
+
+    // ── phases 0-5: fire while ring fills ────────────────────────────────────
+    // scale-in spring on text appear, instant color reset
+    const showPhaseText = (i: number) => {
+      textScale.setValue(0.84);
+      textColorAnim.setValue(0);
+      setCurrentPhase(i);
+      Animated.spring(textScale, {
+        toValue: 1,
+        useNativeDriver: false,
+        tension: 220,
+        friction: 11,
+      }).start();
+    };
+
+    const fireCheckmark = (i: number, onDone?: () => void) => {
+      setCompleted((prev) => {
+        const next = [...prev];
+        next[i] = true;
+        return next;
+      });
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      // scale up + go green — completes ~300ms, then stays visible until next phase
+      Animated.parallel([
+        Animated.spring(textScale, {
+          toValue: 1.08,
+          useNativeDriver: false,
+          tension: 280,
+          friction: 9,
+        }),
+        Animated.timing(textColorAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: false,
+        }),
+      ]).start(() => onDone?.());
+    };
+
+    // fire checkmark 650ms BEFORE the phase ends so the bounce+green
+    // animation is fully visible before the next showPhaseText resets it
+    let elapsed = 0;
+    PHASE_DURATIONS.forEach((dur, i) => {
+      const start = elapsed;
+      setTimeout(() => showPhaseText(i), start);
+      setTimeout(() => fireCheckmark(i), start + dur - 650);
+      elapsed += dur;
+    });
+
+    // ── phase 6: "alright, you're set!" fires 100ms after ring hits 100% ─────
+    const ringTotal = RING_DURATIONS.reduce((a, b) => a + b, 0);
+    setTimeout(() => {
+      showPhaseText(PHASES.length - 1);
+      textColorAnim.setValue(1); // start green immediately
+      // show for 400ms then tick + navigate
+      setTimeout(() => {
+        fireCheckmark(PHASES.length - 1, () => {
+          setTimeout(() => replaceTo("/(onboarding)/screen9"), 500);
+        });
+      }, 400);
+    }, ringTotal + 100);
   }, []);
 
   const textColor = textColorAnim.interpolate({
@@ -297,9 +318,9 @@ export default function Screen8() {
             </View>
           </View>
 
-          {/* Checkmark dots */}
+          {/* Checkmark dots — only phases 0-5, last phase is just farewell text */}
           <View style={styles.dotsRow}>
-            {PHASES.map((_, i) => (
+            {PHASE_DURATIONS.map((_, i) => (
               <CheckDot key={i} done={completed[i]} />
             ))}
           </View>
@@ -310,7 +331,6 @@ export default function Screen8() {
               style={[
                 styles.phaseText,
                 {
-                  opacity: textOpacity,
                   transform: [{ scale: textScale }],
                   color: textColor,
                 },
