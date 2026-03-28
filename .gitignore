@@ -41,3 +41,7 @@ app-example
 # generated native folders
 /ios
 /android
+
+# local reference copies (not part of this repo)
+67Time/
+Repent/
