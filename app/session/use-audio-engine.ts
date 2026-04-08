@@ -10,6 +10,7 @@ import {
   OSC_VOLUME,
   AFFIRMATION_DEFAULT_VOLUME_PERCENT,
   AMBIENT_VOLUME,
+  NOISE_AMBIENT_GAIN_MULTIPLIER,
   BINAURAL_BEATS,
   NOISE_IDS,
   NATURE_SOUNDS,
@@ -73,6 +74,7 @@ export function useAudioEngine({
   const activeAmbientSoundsRef = useRef<Set<AmbientSoundId>>(new Set());
   const ambientNodesRef = useRef<Map<AmbientSoundId, AmbientNode>>(new Map());
   const ambientBuffersRef = useRef<Map<AmbientSoundId, AudioBuffer>>(new Map());
+  const ambientPreloadedRef = useRef(false);
   const bowlBufferRef = useRef<AudioBuffer | null>(null);
   const affirmationBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
 
@@ -206,9 +208,14 @@ export function useAudioEngine({
     const cached = affirmationBuffersRef.current.get(recording.id);
     if (cached) return cached;
     const ctx = ensureAudioContext();
-    const buffer = await ctx.decodeAudioData(recording.uri);
-    affirmationBuffersRef.current.set(recording.id, buffer);
-    return buffer;
+    try {
+      const buffer = await ctx.decodeAudioData(recording.uri);
+      affirmationBuffersRef.current.set(recording.id, buffer);
+      return buffer;
+    } catch (e) {
+      console.warn(`[audio-engine] Failed to decode recording ${recording.id}:`, e);
+      return null;
+    }
   }, [ensureAudioContext]);
 
   // ─── Noise generation ─────────────────────────────────────────────────────
@@ -281,8 +288,12 @@ export function useAudioEngine({
       }
     }
     const gain = ctx.createGain();
+    const noiseMul = NOISE_IDS.has(id) ? NOISE_AMBIENT_GAIN_MULTIPLIER : 1;
     gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(AMBIENT_VOLUME * ambientVolumeRef.current, ctx.currentTime + 0.05);
+    gain.gain.linearRampToValueAtTime(
+      AMBIENT_VOLUME * noiseMul * ambientVolumeRef.current,
+      ctx.currentTime + 0.05,
+    );
     gain.connect(ctx.destination);
     const source = ctx.createBufferSource();
     source.buffer = buffer;
@@ -291,6 +302,21 @@ export function useAudioEngine({
     source.start();
     ambientNodesRef.current.set(id, { source, gain });
   }, [createNoiseBuffer, ensureAudioContext]);
+
+  const preloadAmbientBuffers = useCallback(async () => {
+    if (ambientPreloadedRef.current) return;
+    ambientPreloadedRef.current = true;
+    const ctx = ensureAudioContext();
+    await Promise.allSettled(
+      NATURE_SOUNDS.map(async (entry) => {
+        if (!entry.asset || ambientBuffersRef.current.has(entry.id)) return;
+        try {
+          const buffer = await ctx.decodeAudioData(entry.asset);
+          ambientBuffersRef.current.set(entry.id, buffer);
+        } catch { /* best effort */ }
+      })
+    );
+  }, [ensureAudioContext]);
 
   const toggleAmbientSound = useCallback(async (id: AmbientSoundId) => {
     triggerHaptic();
@@ -392,10 +418,12 @@ export function useAudioEngine({
     return true;
   }, [ensureAudioContext, isBowlMuted, loadBowlBuffer, shouldPlaySingingBowl]);
 
-  const startAffirmationPlayback = useCallback(async function playAffirmation(targetIndex: number) {
+  const startAffirmationPlayback = useCallback(async function playAffirmation(targetIndex: number, visited: Set<number> = new Set()) {
     const items = recordingsRef.current;
     if (items.length === 0) return false;
     const normalizedIndex = ((targetIndex % items.length) + items.length) % items.length;
+    if (visited.has(normalizedIndex)) return false;
+    visited.add(normalizedIndex);
     const target = items[normalizedIndex];
     if (!target) return false;
     clearNextTrackTimer();
@@ -404,6 +432,10 @@ export function useAudioEngine({
     const buffer = await loadAffirmationBuffer(target);
     const gain = affirmationGainRef.current;
     if (!gain) return false;
+    if (!buffer) {
+      const nextIndex = (normalizedIndex + 1) % items.length;
+      return playAffirmation(nextIndex, visited);
+    }
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.connect(gain);
@@ -464,8 +496,9 @@ export function useAudioEngine({
     ambientVolumeRef.current = clamped;
     setAmbientVolume(clamped);
     const ctx = audioCtxRef.current;
-    const target = AMBIENT_VOLUME * clamped;
-    for (const { gain } of ambientNodesRef.current.values()) {
+    for (const [id, { gain }] of ambientNodesRef.current) {
+      const noiseMul = NOISE_IDS.has(id) ? NOISE_AMBIENT_GAIN_MULTIPLIER : 1;
+      const target = AMBIENT_VOLUME * noiseMul * clamped;
       if (ctx) {
         const now = ctx.currentTime;
         gain.gain.cancelScheduledValues(now);
@@ -488,14 +521,21 @@ export function useAudioEngine({
     }
     await ensureAudioSession();
     await ensureAudioContext().resume();
+    void preloadAmbientBuffers();
     if (shouldPlaySingingBowl) await startBowlPlayback();
     if (shouldPlayBrainwave) startBinaural();
     else if (shouldPlayPure) startPure();
-    if (!affirmationSourceRef.current && recordingsRef.current.length > 0) {
-      await startAffirmationPlayback(currentTrackIndexRef.current);
+    try {
+      if (!affirmationSourceRef.current && recordingsRef.current.length > 0) {
+        await startAffirmationPlayback(currentTrackIndexRef.current);
+      }
+    } catch (e) {
+      console.warn('[audio-engine] Affirmation playback start failed:', e);
     }
     for (const id of activeAmbientSoundsRef.current) {
-      if (!ambientNodesRef.current.has(id)) await startAmbientSound(id);
+      if (!ambientNodesRef.current.has(id)) {
+        try { await startAmbientSound(id); } catch { /* best effort */ }
+      }
     }
     startSessionTimer();
     setIsPlaying(true);
@@ -504,15 +544,16 @@ export function useAudioEngine({
     isPlaying, clearNextTrackTimer, pauseAudioEngine, pauseSessionTimer,
     ensureAudioSession, ensureAudioContext, shouldPlaySingingBowl, shouldPlayBrainwave,
     shouldPlayPure, startBowlPlayback, startBinaural, startPure,
-    startAffirmationPlayback, startAmbientSound, startSessionTimer,
+    startAffirmationPlayback, startAmbientSound, startSessionTimer, preloadAmbientBuffers,
   ]);
 
-  const stopSession = useCallback(() => {
+  const stopSession = useCallback((): number => {
     clearNextTrackTimer();
     pauseSessionTimer();
     isPlayingRef.current = false;
     setIsPlaying(false);
     closeAudioEngine();
+    return sessionElapsedMsRef.current;
   }, [clearNextTrackTimer, closeAudioEngine, pauseSessionTimer]);
 
   // ─── Effects ──────────────────────────────────────────────────────────────
@@ -545,9 +586,13 @@ export function useAudioEngine({
   useEffect(() => {
     if (!isPlaying || recordings.length === 0 || affirmationSourceRef.current) return;
     const start = async () => {
-      await ensureAudioSession();
-      await ensureAudioContext().resume();
-      await startAffirmationPlayback(currentTrackIndexRef.current);
+      try {
+        await ensureAudioSession();
+        await ensureAudioContext().resume();
+        await startAffirmationPlayback(currentTrackIndexRef.current);
+      } catch (e) {
+        console.warn('[audio-engine] Auto-start affirmation failed:', e);
+      }
     };
     void start();
   }, [ensureAudioContext, ensureAudioSession, isPlaying, recordings, startAffirmationPlayback]);

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -8,11 +8,71 @@ import {
   TouchableOpacity,
   Easing,
 } from "react-native";
+import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+
+const TYPEWRITER_MS = 33;
+const LETTER_FADE_MS = 480;
+
+const letterEnter = FadeIn.duration(LETTER_FADE_MS).easing(REasing.out(REasing.cubic));
+
+function FadeLetter({ ch, style }: { ch: string; style: object }) {
+  return (
+    <RAnimated.View entering={letterEnter}>
+      <Text style={style}>{ch}</Text>
+    </RAnimated.View>
+  );
+}
+
+function TypewriterText({
+  text,
+  style,
+  onComplete,
+}: {
+  text: string;
+  style: object;
+  onComplete?: () => void;
+}) {
+  const chars = useMemo(() => [...text], [text]);
+  const [visibleCount, setVisibleCount] = useState(0);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
+  useEffect(() => {
+    setVisibleCount(0);
+    let i = 0;
+    let intervalId: ReturnType<typeof setInterval>;
+    const delayId = setTimeout(() => {
+      intervalId = setInterval(() => {
+        i += 1;
+        if (i > chars.length) {
+          clearInterval(intervalId);
+          onCompleteRef.current?.();
+          return;
+        }
+        const ch = chars[i - 1];
+        if (ch && ch !== " ") Haptics.selectionAsync();
+        setVisibleCount(i);
+      }, TYPEWRITER_MS);
+    }, 200);
+    return () => {
+      clearTimeout(delayId);
+      clearInterval(intervalId);
+    };
+  }, [text]);
+
+  return (
+    <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+      {chars.slice(0, visibleCount).map((ch, i) => (
+        <FadeLetter key={i} ch={ch} style={style} />
+      ))}
+    </View>
+  );
+}
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -113,7 +173,7 @@ const bar = StyleSheet.create({
 export default function Screen9() {
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
 
-  const fadeTitle = useRef(new Animated.Value(0)).current;
+  const fadeSubtitle = useRef(new Animated.Value(0)).current;
   const fadeDesc = useRef(new Animated.Value(0)).current;
   const fadeCard = useRef(new Animated.Value(0)).current;
   const fadeStat = useRef(new Animated.Value(0)).current;
@@ -121,13 +181,13 @@ export default function Screen9() {
 
   const [startCharts, setStartCharts] = useState(false);
 
-  useEffect(() => {
-    fadeIn();
+  useEffect(() => { fadeIn(); }, []);
 
+  const handleTitleComplete = () => {
     Animated.sequence([
-      Animated.timing(fadeTitle, {
+      Animated.timing(fadeSubtitle, {
         toValue: 1,
-        duration: 500,
+        duration: 400,
         useNativeDriver: true,
       }),
       Animated.timing(fadeDesc, {
@@ -143,6 +203,12 @@ export default function Screen9() {
     ]).start(({ finished }) => {
       if (finished) {
         setStartCharts(true);
+        let elapsed = 0;
+        const hapticId = setInterval(() => {
+          elapsed += 80;
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          if (elapsed >= 2300) clearInterval(hapticId);
+        }, 80);
         Animated.parallel([
           Animated.timing(fadeStat, {
             toValue: 1,
@@ -159,7 +225,7 @@ export default function Screen9() {
         ]).start();
       }
     });
-  }, []);
+  };
 
   const handleContinue = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -171,16 +237,22 @@ export default function Screen9() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.content}>
           {/* Title */}
-          <Animated.View style={{ opacity: fadeTitle, width: "100%" }}>
-            <Text style={styles.title}>analysis complete</Text>
-            <Text style={styles.subtitle}>based on your response...</Text>
-          </Animated.View>
+          <View style={{ width: "100%", gap: 6 }}>
+            <TypewriterText
+              text="analysis complete"
+              style={styles.title}
+              onComplete={handleTitleComplete}
+            />
+            <Animated.Text style={[styles.subtitle, { opacity: fadeSubtitle }]}>
+              based on your response...
+            </Animated.Text>
+          </View>
 
           {/* Description */}
           <Animated.View style={{ opacity: fadeDesc, width: "100%" }}>
             <Text style={styles.description}>
               Your results suggest a significant amount of time caught in
-              negative thought loops.*
+              negative thought loops*
             </Text>
           </Animated.View>
 

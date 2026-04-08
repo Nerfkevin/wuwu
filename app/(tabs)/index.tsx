@@ -1,6 +1,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Dimensions, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,6 +9,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
 import { Colors, Fonts } from '@/constants/theme';
 import { GlowPresets } from '@/constants/glow';
+import StreakPill from '@/components/StreakPill';
 
 const { width } = Dimensions.get('window');
 const BUTTON_SIZE = width * 0.55;
@@ -21,7 +23,9 @@ export default function HomeScreen() {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const pressScale = useRef(new Animated.Value(1)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const orbSpin = useRef(new Animated.Value(0)).current;
   const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+  const orbSpinLoopRef = useRef<Animated.CompositeAnimation | null>(null);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -62,9 +66,32 @@ export default function HomeScreen() {
     };
   }, [activated, pressing, pulseAnim]);
 
+  useEffect(() => {
+    orbSpinLoopRef.current?.stop();
+    orbSpin.setValue(0);
+    orbSpinLoopRef.current = Animated.loop(
+      Animated.timing(orbSpin, {
+        toValue: 1,
+        duration: 152000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    orbSpinLoopRef.current.start();
+    return () => {
+      orbSpinLoopRef.current?.stop();
+    };
+  }, [orbSpin]);
+
+  const orbRotate = orbSpin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
   const handlePressIn = () => {
     setPressing(true);
     setGlowState('press');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
     Animated.timing(pressScale, {
       toValue: 0.9,
@@ -91,8 +118,14 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <LinearGradient
+        colors={[Colors.background, '#1A0B2E', Colors.background]}
+        locations={[0, 0.4, 1]}
+        style={StyleSheet.absoluteFill}
+      />
       <View style={styles.titleContainer}>
         <Text style={styles.title}>Wu-Wu</Text>
+        <StreakPill />
       </View>
 
       <View style={styles.content}>
@@ -106,7 +139,26 @@ export default function HomeScreen() {
             },
           ]}>
           <AnimatedGlow 
-            preset={GlowPresets.chakra(BUTTON_SIZE / 2)}
+            preset={GlowPresets.chakra(
+              BUTTON_SIZE / 2,
+              [
+                '#3D0F6B',
+                '#5B21B6',
+                '#7C3AED',
+                '#5B21B6',
+                '#9333EA',
+                '#A855F7',
+                '#C026D3',
+                '#A855F7',
+                '#9333EA',
+                '#5B21B6',
+                '#7C3AED',
+                '#5B21B6',
+                '#3D0F6B',
+              ],
+              30,
+              30
+            )}
             activeState={glowState}
           >
             <Pressable 
@@ -114,14 +166,11 @@ export default function HomeScreen() {
               onPressIn={handlePressIn}
               onPressOut={handlePressOut}
             >
-              <LinearGradient
-                colors={Colors.chakra.gradient}
-                style={styles.buttonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Text style={styles.buttonText}>Start Session</Text>
-              </LinearGradient>
+              <Animated.Image
+                source={require('@/assets/images/onboarding/orb1.png')}
+                style={[styles.orbImage, { transform: [{ rotate: orbRotate }] }]}
+                resizeMode="contain"
+              />
             </Pressable>
           </AnimatedGlow>
         </Animated.View>
@@ -149,12 +198,14 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     paddingTop: 62,
+    gap: 10,
     zIndex: 1,
   },
   content: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'visible',
   },
   title: {
     fontFamily: Fonts.serif,
@@ -167,28 +218,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: BUTTON_SIZE,
     height: BUTTON_SIZE,
+    paddingVertical: 80,
+    marginVertical: -80,
   },
   mainButton: {
     width: BUTTON_SIZE,
     height: BUTTON_SIZE,
-    borderRadius: BUTTON_SIZE / 2,
-    elevation: 10,
-    shadowColor: Colors.chakra.red,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-  },
-  buttonGradient: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: BUTTON_SIZE / 2,
   },
-  buttonText: {
-    fontFamily: Fonts.serifBold,
-    fontSize: 24,
-    color: Colors.text,
-    textAlign: 'center',
+  orbImage: {
+    position: 'absolute',
+    width: BUTTON_SIZE,
+    height: BUTTON_SIZE,
   },
   bottomGradient: {
     position: 'absolute',

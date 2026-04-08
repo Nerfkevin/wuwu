@@ -9,7 +9,9 @@ export const BINAURAL_CARRIER = 200;
 export const OSC_VOLUME = 0.5;
 export const AFFIRMATION_DEFAULT_VOLUME_PERCENT = 50;
 export const AFFIRMATION_MAX_GAIN = 1;
-export const AMBIENT_VOLUME = 0.45;
+export const AMBIENT_VOLUME = 1.2;
+/** Multiplier applied to white / pink / brown noise only (nature ambients stay at full AMBIENT_VOLUME). */
+export const NOISE_AMBIENT_GAIN_MULTIPLIER = 0.38;
 
 export const BINAURAL_BEATS: Record<string, number> = {
   delta: 2,

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import * as SecureStore from "expo-secure-store";
 import { requestRecordingPermissionsAsync } from "expo-audio";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 
 const { width, height } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -36,6 +37,48 @@ const OVERLAY_COLORS = [
   "#1A0535", "#3D0E7A", "#250845",
 ];
 
+const TYPEWRITER_MS = 33;
+const LETTER_FADE_MS = 480;
+
+type CharToken = { ch: string };
+type WordToken = { chars: CharToken[]; startIdx: number };
+
+function stringToCharTokens(s: string): CharToken[] {
+  return [...s].map((ch) => ({ ch }));
+}
+
+function charsToWordTokens(chars: CharToken[]): WordToken[] {
+  const words: WordToken[] = [];
+  let i = 0;
+  while (i < chars.length) {
+    const startIdx = i;
+    if (chars[i].ch === "\n") {
+      words.push({ chars: [{ ch: "\n" }], startIdx });
+      i += 1;
+      continue;
+    }
+    const wordChars: CharToken[] = [];
+    while (i < chars.length && chars[i].ch !== " " && chars[i].ch !== "\n") {
+      wordChars.push(chars[i++]);
+    }
+    while (i < chars.length && chars[i].ch === " ") {
+      wordChars.push(chars[i++]);
+    }
+    if (wordChars.length > 0) words.push({ chars: wordChars, startIdx });
+  }
+  return words;
+}
+
+const letterEnter = FadeIn.duration(LETTER_FADE_MS).easing(REasing.out(REasing.cubic));
+
+function FadeLetter({ ch, charStyle }: { ch: string; charStyle: object }) {
+  return (
+    <RAnimated.View entering={letterEnter}>
+      <Text style={charStyle}>{ch}</Text>
+    </RAnimated.View>
+  );
+}
+
 type PermState = "idle" | "granted" | "denied";
 
 export default function Screen12() {
@@ -44,31 +87,95 @@ export default function Screen12() {
   const [userName, setUserName] = useState("");
   const [showOverlay, setShowOverlay] = useState(false);
 
-  const fadeTitle = useRef(new Animated.Value(0)).current;
+  const TITLE_TEXT = "allow microphone recording";
+  const DENIED_TEXT = "microphone access denied";
+  const titleTokens = useMemo(() => stringToCharTokens(TITLE_TEXT), []);
+  const titleWords = useMemo(() => charsToWordTokens(titleTokens), [titleTokens]);
+  const deniedTokens = useMemo(() => stringToCharTokens(DENIED_TEXT), []);
+  const deniedWords = useMemo(() => charsToWordTokens(deniedTokens), [deniedTokens]);
+
+  const greetingWordsRef = useRef<WordToken[]>([]);
+  const greetingTokensLenRef = useRef(0);
+
+  const [titleVisible, setTitleVisible] = useState(0);
+  const [deniedVisible, setDeniedVisible] = useState(0);
+  const [greetingVisible, setGreetingVisible] = useState(0);
   const fadeMic = useRef(new Animated.Value(0)).current;
   const fadePill = useRef(new Animated.Value(0)).current;
   const fadeBtn = useRef(new Animated.Value(0)).current;
+  const fadeDeniedBelow = useRef(new Animated.Value(0)).current;
 
   const pillOpacity = useRef(new Animated.Value(1)).current;
 
   // overlay animations
   const overlayOpacity = useRef(new Animated.Value(0)).current;
-  const overlayTextOpacity = useRef(new Animated.Value(0)).current;
-  const overlayTextY = useRef(new Animated.Value(18)).current;
 
   useEffect(() => {
     fadeIn();
-    Animated.sequence([
-      Animated.timing(fadeTitle, { toValue: 1, duration: 550, useNativeDriver: true }),
-      Animated.timing(fadeMic, { toValue: 1, duration: 500, useNativeDriver: true }),
-      Animated.timing(fadePill, { toValue: 1, duration: 450, useNativeDriver: true }),
-      Animated.timing(fadeBtn, { toValue: 1, duration: 400, useNativeDriver: true }),
-    ]).start();
-
     SecureStore.getItemAsync("user_name").then((val) => {
       if (val) setUserName(val);
     });
+
+    setTitleVisible(0);
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const delayId = setTimeout(() => {
+      let i = 0;
+      intervalId = setInterval(() => {
+        i += 1;
+        if (i > titleTokens.length) {
+          clearInterval(intervalId!);
+          setTimeout(() => {
+            Animated.sequence([
+              Animated.timing(fadeMic, { toValue: 1, duration: 500, useNativeDriver: true }),
+              Animated.timing(fadePill, { toValue: 1, duration: 450, useNativeDriver: true }),
+              Animated.timing(fadeBtn, { toValue: 1, duration: 400, useNativeDriver: true }),
+            ]).start();
+          }, 150);
+          return;
+        }
+        const ch = titleTokens[i - 1]?.ch;
+        if (ch && ch !== " ") Haptics.selectionAsync();
+        setTitleVisible(i);
+      }, TYPEWRITER_MS);
+    }, 300);
+
+    return () => {
+      clearTimeout(delayId);
+      if (intervalId) clearInterval(intervalId);
+    };
   }, []);
+
+  // typewrite "microphone access denied" when denied, then fade in footer buttons
+  useEffect(() => {
+    if (permState !== "denied") return;
+    setDeniedVisible(0);
+    fadeDeniedBelow.setValue(0);
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    let i = 0;
+    intervalId = setInterval(() => {
+      i += 1;
+      if (i > deniedTokens.length) {
+        clearInterval(intervalId!);
+        setTimeout(() => {
+          Animated.timing(fadeDeniedBelow, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+        }, 150);
+        return;
+      }
+      const ch = deniedTokens[i - 1]?.ch;
+      if (ch && ch !== " ") Haptics.selectionAsync();
+      setDeniedVisible(i);
+    }, TYPEWRITER_MS);
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [permState]);
+
+  // when denied, also keep pill visible (swapPill fades it out then back — ensure fadePill stays 1)
+  useEffect(() => {
+    if (permState === "denied") {
+      Animated.timing(fadePill, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+    }
+  }, [permState]);
 
   const swapPill = (next: () => void) => {
     Animated.timing(pillOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
@@ -79,18 +186,27 @@ export default function Screen12() {
 
   const showCelebrationThenNavigate = () => {
     setShowOverlay(true);
-    // fade overlay in
+    setGreetingVisible(0);
+    const text = userName
+      ? `awesome ${userName},\nlet's build your\naffirmation track!`
+      : `awesome,\nlet's build your\naffirmation track!`;
+    const tokens = stringToCharTokens(text);
+    greetingWordsRef.current = charsToWordTokens(tokens);
+    greetingTokensLenRef.current = tokens.length;
+
     Animated.timing(overlayOpacity, { toValue: 1, duration: 400, useNativeDriver: true }).start(() => {
-      // text slides up & fades in
-      Animated.parallel([
-        Animated.timing(overlayTextOpacity, { toValue: 1, duration: 450, useNativeDriver: true }),
-        Animated.timing(overlayTextY, { toValue: 0, duration: 450, useNativeDriver: true }),
-      ]).start(() => {
-        // hold for ~1.8s then navigate while overlay is still visible
-        setTimeout(() => {
-          navigateTo("/(onboarding)/screen13");
-        }, 1800);
-      });
+      let i = 0;
+      const intervalId = setInterval(() => {
+        i += 1;
+        if (i > tokens.length) {
+          clearInterval(intervalId);
+          setTimeout(() => navigateTo("/(onboarding)/screen13"), 1800);
+          return;
+        }
+        const ch = tokens[i - 1]?.ch;
+        if (ch && ch !== " " && ch !== "\n") Haptics.selectionAsync();
+        setGreetingVisible(i);
+      }, TYPEWRITER_MS);
     });
   };
 
@@ -124,9 +240,6 @@ export default function Screen12() {
       ? "microphone unlocked — your voice is ready ✓"
       : "your voice is the most powerful sound that understands you";
 
-  const greeting = userName
-    ? `awesome ${userName},\nlet's build your\naffirmation track!`
-    : `awesome,\nlet's build your\naffirmation track!`;
 
   return (
     <Animated.View style={[styles.container, { opacity: contentOpacity }]}>
@@ -138,11 +251,29 @@ export default function Screen12() {
 
       <SafeAreaView style={styles.safe}>
         <View style={styles.content}>
-          <Animated.Text style={[styles.title, { opacity: fadeTitle }]}>
-            {permState === "denied"
-              ? "microphone access denied"
-              : "allow microphone recording"}
-          </Animated.Text>
+          <View style={styles.titleSlot}>
+            <View style={styles.charRow}>
+              {(permState === "denied" ? deniedWords : titleWords).map((word, wIdx) => {
+                const visibleCount = permState === "denied" ? deniedVisible : titleVisible;
+                const charsVisible = Math.max(0, Math.min(word.chars.length, visibleCount - word.startIdx));
+                if (charsVisible === 0) return null;
+                if (word.chars.length === 1 && word.chars[0].ch === "\n") {
+                  return <View key={wIdx} style={styles.lineBreak} />;
+                }
+                return (
+                  <View key={wIdx} style={styles.wordRow}>
+                    {word.chars.slice(0, charsVisible).map((tok, cIdx) => (
+                      <FadeLetter
+                        key={`${word.startIdx}-${cIdx}`}
+                        ch={tok.ch}
+                        charStyle={styles.title}
+                      />
+                    ))}
+                  </View>
+                );
+              })}
+            </View>
+          </View>
 
           <Animated.View style={[styles.micWrap, { opacity: fadeMic }]}>
             <View style={[styles.micRing, permState === "granted" && styles.micRingGranted]}>
@@ -155,8 +286,8 @@ export default function Screen12() {
           </Animated.View>
         </View>
 
-        <Animated.View style={[styles.footer, { opacity: fadeBtn }]}>
-          {permState === "denied" ? (
+        {permState === "denied" ? (
+          <Animated.View style={[styles.footer, { opacity: fadeDeniedBelow }]}>
             <View style={styles.deniedActions}>
               <TouchableOpacity onPress={handleOpenSettings} activeOpacity={0.85} style={styles.settingsBtn}>
                 <Text style={styles.settingsBtnText}>open settings</Text>
@@ -165,7 +296,9 @@ export default function Screen12() {
                 <Text style={styles.skipText}>continue without microphone →</Text>
               </TouchableOpacity>
             </View>
-          ) : (
+          </Animated.View>
+        ) : (
+          <Animated.View style={[styles.footer, { opacity: fadeBtn }]}>
             <TouchableOpacity
               onPress={handleUnlock}
               activeOpacity={0.85}
@@ -176,8 +309,8 @@ export default function Screen12() {
                 {permState === "granted" ? "unlocked ✓" : "unlock your voice"}
               </Text>
             </TouchableOpacity>
-          )}
-        </Animated.View>
+          </Animated.View>
+        )}
       </SafeAreaView>
 
       {/* ── Celebration overlay ── */}
@@ -192,17 +325,28 @@ export default function Screen12() {
             smoothsColors
           />
           <SafeAreaView style={styles.overlaySafe}>
-            <Animated.Text
-              style={[
-                styles.overlayText,
-                {
-                  opacity: overlayTextOpacity,
-                  transform: [{ translateY: overlayTextY }],
-                },
-              ]}
-            >
-              {greeting}
-            </Animated.Text>
+            <View style={styles.overlaySlot}>
+              <View style={styles.charRow}>
+                {greetingWordsRef.current.map((word, wIdx) => {
+                  const charsVisible = Math.max(0, Math.min(word.chars.length, greetingVisible - word.startIdx));
+                  if (charsVisible === 0) return null;
+                  if (word.chars.length === 1 && word.chars[0].ch === "\n") {
+                    return <View key={wIdx} style={styles.lineBreak} />;
+                  }
+                  return (
+                    <View key={wIdx} style={styles.wordRow}>
+                      {word.chars.slice(0, charsVisible).map((tok, cIdx) => (
+                        <FadeLetter
+                          key={`${word.startIdx}-${cIdx}`}
+                          ch={tok.ch}
+                          charStyle={styles.overlayText}
+                        />
+                      ))}
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
           </SafeAreaView>
         </Animated.View>
       )}
@@ -219,6 +363,21 @@ const styles = StyleSheet.create({
     paddingTop: isSmallDevice ? 24 : 44,
     gap: isSmallDevice ? 20 : 28,
   },
+  titleSlot: {
+    width: "100%",
+  },
+  charRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+  },
+  wordRow: {
+    flexDirection: "row",
+  },
+  lineBreak: {
+    width: "100%",
+    height: 0,
+  },
   title: {
     fontSize: isSmallDevice ? 28 : 36,
     color: "#fff",
@@ -228,7 +387,7 @@ const styles = StyleSheet.create({
   micWrap: {
     alignItems: "center",
     justifyContent: "center",
-    marginTop: isSmallDevice ? 40 : 60,
+    marginTop: 130,
     marginBottom: isSmallDevice ? 32 : 48,
   },
   micRing: {
@@ -316,12 +475,16 @@ const styles = StyleSheet.create({
   overlaySafe: {
     flex: 1,
     justifyContent: "center",
-    paddingHorizontal: 32,
+    paddingHorizontal: isSmallDevice ? 28 : 36,
+  },
+  overlaySlot: {
+    justifyContent: "flex-start",
+    minHeight: isSmallDevice ? 132 : 156,
   },
   overlayText: {
-    fontSize: isSmallDevice ? 32 : 40,
+    fontSize: isSmallDevice ? 36 : 44,
     color: "#fff",
     fontFamily: Fonts.serif,
-    lineHeight: isSmallDevice ? 42 : 52,
+    lineHeight: isSmallDevice ? 44 : 52,
   },
 });

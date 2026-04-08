@@ -1,5 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
+import * as Haptics from 'expo-haptics';
 import {
+  Animated,
   Alert,
   Pressable,
   ScrollView,
@@ -16,10 +18,12 @@ import { Colors, Fonts, Layout } from '@/constants/theme';
 import { GlowPresets } from '@/constants/glow';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { createAudioPlayer } from 'expo-audio';
-import type { AudioPlayer } from 'expo-audio';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { createAudioPlayer } from '@/lib/expo-audio';
+import type { AudioPlayer } from '@/lib/expo-audio';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
-import { getSavedRecordings, reorderSavedRecordings, SavedRecording } from '@/lib/recording-store';
+import SwipeableItem, { useSwipeableItemParams } from 'react-native-swipeable-item';
+import { getSavedRecordings, reorderSavedRecordings, deleteSavedRecording, SavedRecording } from '@/lib/recording-store';
 import { AFFIRMATION_PILLARS } from '@/constants/affirmations';
 import {
   activateLockScreenControls,
@@ -35,10 +39,36 @@ import {
   reorderPlaylistRecordings,
 } from '@/lib/playlist-store';
 
+function DeleteUnderlay({
+  item,
+  onDelete,
+}: {
+  item: SavedRecording;
+  onDelete: (item: SavedRecording) => void;
+}) {
+  const { close } = useSwipeableItemParams<SavedRecording>();
+  return (
+    <View style={styles.underlayLeft}>
+      <TouchableOpacity
+        style={styles.deleteBtn}
+        onPress={() => {
+          close();
+          onDelete(item);
+        }}
+      >
+        <Ionicons name="trash" size={22} color="#fff" />
+        <Text style={styles.deleteBtnText}>Delete</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 export default function LibraryScreen() {
   const router = useRouter();
-  const tabBarHeight = 80;
+  const { bottom: bottomInset } = useSafeAreaInsets();
+  const tabBarHeight = 50 + bottomInset;
   const [glowState, setGlowState] = useState<GlowEvent>('default');
+  const fabScale = useRef(new Animated.Value(1)).current;
   const [recordings, setRecordings] = useState<SavedRecording[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState(ALL_PLAYLIST_ID);
@@ -187,6 +217,33 @@ export default function LibraryScreen() {
     setSelectedPlaylistId(playlist.id);
   };
 
+  const handleDeleteRecording = useCallback(
+    (item: SavedRecording) => {
+      Alert.alert(
+        'Delete Recording',
+        `Delete "${item.text}"? This cannot be undone.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              if (playerRef.current && playingId === item.id) {
+                clearLockScreenControls(playerRef.current);
+                playerRef.current.remove();
+                playerRef.current = null;
+                setPlayingId(null);
+              }
+              await deleteSavedRecording(item.id);
+              setRecordings((prev) => prev.filter((r) => r.id !== item.id));
+            },
+          },
+        ]
+      );
+    },
+    [playingId]
+  );
+
   const handleDeletePlaylist = (playlist: Playlist) => {
     Alert.alert(`Delete "${playlist.name}"?`, 'Recordings will not be deleted.', [
       { text: 'Cancel', style: 'cancel' },
@@ -202,6 +259,10 @@ export default function LibraryScreen() {
     ]);
   };
 
+  const renderUnderlayLeft = ({ item }: { item: SavedRecording }) => (
+    <DeleteUnderlay item={item} onDelete={handleDeleteRecording} />
+  );
+
   const renderItem = ({ item, drag, isActive }: RenderItemParams<SavedRecording>) => {
     const glowColor =
       AFFIRMATION_PILLARS[item.pillar as keyof typeof AFFIRMATION_PILLARS]?.color ??
@@ -210,65 +271,79 @@ export default function LibraryScreen() {
 
     return (
       <View style={styles.cardRow}>
-        <ScaleDecorator activeScale={1.03}>
-          <AnimatedGlow
-            preset={GlowPresets.vaporwave(Layout.borderRadius, glowColor)}
-            activeState="default"
-          >
-            <View
-              style={[
-                styles.cardOuter,
-                { borderColor: glowColor },
-                isActive && styles.cardOuterActive,
-                isHoldActive && styles.cardOuterHold,
-              ]}
+        <SwipeableItem
+          key={item.id}
+          item={item}
+          renderUnderlayLeft={() => renderUnderlayLeft({ item })}
+          snapPointsLeft={[80]}
+          swipeEnabled={!isActive}
+        >
+          <ScaleDecorator activeScale={1.03}>
+            <AnimatedGlow
+              preset={GlowPresets.vaporwave(Layout.borderRadius, glowColor)}
+              activeState="default"
             >
-              <Pressable
-                style={({ pressed }) => [styles.cardInner, pressed && styles.cardInnerPressed]}
-                onPress={() =>
-                  router.push({
-                    pathname: '/add/library-recording',
-                    params: { id: item.id, playlistId: selectedPlaylistId },
-                  })
-                }
+              <View
+                style={[
+                  styles.cardOuter,
+                  { borderColor: glowColor },
+                  isActive && styles.cardOuterActive,
+                  isHoldActive && styles.cardOuterHold,
+                ]}
               >
-                <View style={styles.leftMeta}>
-                  <TouchableOpacity
-                    style={styles.dragHandle}
-                    onPressIn={() => setPressedHandleId(item.id)}
-                    onPressOut={() =>
-                      setPressedHandleId((current) => (current === item.id ? null : current))
-                    }
-                    onLongPress={drag}
-                    disabled={isActive}
-                    delayLongPress={140}
-                  >
-                    <Ionicons name="ellipsis-vertical" size={18} color={Colors.textSecondary} />
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.cardTextContainer}>
-                  <Text style={styles.cardTitle}>{item.text}</Text>
-                  <Text style={styles.cardSubtitle}>{item.pillar}</Text>
-                </View>
-                <View style={styles.cardMeta}>
-                  <TouchableOpacity style={styles.playButton} onPress={() => handlePlay(item)}>
-                    <Ionicons
-                      name={playingId === item.id ? 'pause' : 'play'}
-                      size={20}
-                      color={Colors.text}
-                    />
-                  </TouchableOpacity>
-                </View>
-              </Pressable>
-            </View>
-          </AnimatedGlow>
-        </ScaleDecorator>
+                <Pressable
+                  style={({ pressed }) => [styles.cardInner, pressed && styles.cardInnerPressed]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    router.push({
+                      pathname: '/add/library-recording',
+                      params: { id: item.id, playlistId: selectedPlaylistId },
+                    });
+                  }}
+                >
+                  <View style={styles.leftMeta}>
+                    <TouchableOpacity
+                      style={styles.dragHandle}
+                      onPressIn={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPressedHandleId(item.id); }}
+                      onPressOut={() =>
+                        setPressedHandleId((current) => (current === item.id ? null : current))
+                      }
+                      onLongPress={drag}
+                      disabled={isActive}
+                      delayLongPress={140}
+                    >
+                      <Ionicons name="ellipsis-vertical" size={18} color={Colors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.cardTextContainer}>
+                    <Text style={styles.cardTitle}>{item.text}</Text>
+                    <Text style={styles.cardSubtitle}>{item.pillar}</Text>
+                  </View>
+                  <View style={styles.cardMeta}>
+                    <TouchableOpacity style={styles.playButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); handlePlay(item); }}>
+                      <Ionicons
+                        name={playingId === item.id ? 'pause' : 'play'}
+                        size={20}
+                        color={Colors.text}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </Pressable>
+              </View>
+            </AnimatedGlow>
+          </ScaleDecorator>
+        </SwipeableItem>
       </View>
     );
   };
 
   return (
     <View style={styles.container}>
+      <LinearGradient
+        colors={[Colors.background, '#1A0B2E', Colors.background]}
+        locations={[0, 0.4, 1]}
+        style={StyleSheet.absoluteFill}
+      />
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Affirmation Track</Text>
         <Text style={styles.headerStatus}>{displayedRecordings.length} ACTIVE</Text>
@@ -285,7 +360,7 @@ export default function LibraryScreen() {
             styles.playlistChip,
             selectedPlaylistId === ALL_PLAYLIST_ID && styles.playlistChipActive,
           ]}
-          onPress={() => setSelectedPlaylistId(ALL_PLAYLIST_ID)}
+          onPress={() => { Haptics.selectionAsync(); setSelectedPlaylistId(ALL_PLAYLIST_ID); }}
         >
           <Text
             style={[
@@ -304,8 +379,8 @@ export default function LibraryScreen() {
               styles.playlistChip,
               selectedPlaylistId === pl.id && styles.playlistChipActive,
             ]}
-            onPress={() => setSelectedPlaylistId(pl.id)}
-            onLongPress={() => handleDeletePlaylist(pl)}
+            onPress={() => { Haptics.selectionAsync(); setSelectedPlaylistId(pl.id); }}
+            onLongPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); handleDeletePlaylist(pl); }}
             delayLongPress={500}
           >
             <Text
@@ -321,7 +396,7 @@ export default function LibraryScreen() {
 
         <TouchableOpacity
           style={styles.playlistAddBtn}
-          onPress={() => setShowCreateInput((v) => !v)}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowCreateInput((v) => !v); }}
         >
           <Ionicons name="add" size={14} color={Colors.textSecondary} />
           <Text style={styles.playlistAddText}>Playlist</Text>
@@ -345,7 +420,7 @@ export default function LibraryScreen() {
               styles.createConfirmBtn,
               !newPlaylistName.trim() && styles.createConfirmBtnDisabled,
             ]}
-            onPress={handleCreatePlaylist}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleCreatePlaylist(); }}
             disabled={!newPlaylistName.trim()}
           >
             <Ionicons name="checkmark" size={18} color="#000" />
@@ -365,26 +440,33 @@ export default function LibraryScreen() {
         autoscrollThreshold={48}
         dragItemOverflow={false}
         extraData={activeDragId}
-        contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + 100 }]}
+        contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + 220 }]}
         ListEmptyComponent={
           <Text style={styles.emptyText}>
             {selectedPlaylistId === ALL_PLAYLIST_ID
               ? 'No affirmation tracks yet. Tap + to add one.'
-              : 'This playlist is empty. Add tracks via the track detail screen.'}
+              : 'No affirmation tracks yet. Tap + to add one.'}
           </Text>
         }
       />
 
-      <View style={[styles.fabWrapper, { bottom: tabBarHeight + 20 }]}>
-        <AnimatedGlow preset={GlowPresets.chakra(30)} activeState={glowState}>
+      <Animated.View style={[styles.fabWrapper, { bottom: tabBarHeight + 20 }, { transform: [{ scale: fabScale }] }]}>
+        <AnimatedGlow preset={GlowPresets.chakra(30, ['#6B21CC', '#BF5FFF', '#FF4DC4', '#BF5FFF', '#6B21CC'], 6, 6)} activeState={glowState}>
           <Pressable
             style={styles.fab}
             onPress={() => router.push('/add/pillar')}
-            onPressIn={() => setGlowState('press')}
-            onPressOut={() => setGlowState('default')}
+            onPressIn={() => {
+              setGlowState('press');
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              Animated.spring(fabScale, { toValue: 0.88, useNativeDriver: true, speed: 50, bounciness: 0 }).start();
+            }}
+            onPressOut={() => {
+              setGlowState('default');
+              Animated.spring(fabScale, { toValue: 1, useNativeDriver: true, speed: 20, bounciness: 8 }).start();
+            }}
           >
             <LinearGradient
-              colors={Colors.chakra.gradient}
+              colors={['#6B21CC', '#BF5FFF', '#FF4DC4']}
               style={styles.fabGradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -393,7 +475,7 @@ export default function LibraryScreen() {
             </LinearGradient>
           </Pressable>
         </AnimatedGlow>
-      </View>
+      </Animated.View>
 
     </View>
   );
@@ -410,8 +492,8 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   headerTitle: {
-    fontFamily: Fonts.mono,
-    fontSize: 26,
+    fontFamily: Fonts.serif,
+    fontSize: 40,
     color: Colors.text,
   },
   headerStatus: {
@@ -556,7 +638,7 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 30,
     elevation: 8,
-    shadowColor: Colors.chakra.red,
+    shadowColor: '#BF5FFF',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.5,
     shadowRadius: 8,
@@ -596,5 +678,27 @@ const styles = StyleSheet.create({
   },
   createConfirmBtnDisabled: {
     backgroundColor: 'rgba(139,92,246,0.3)',
+  },
+  underlayLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    borderRadius: Layout.borderRadius,
+    overflow: 'hidden',
+    backgroundColor: '#c0392b',
+  },
+  deleteBtn: {
+    width: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: '#c0392b',
+    alignSelf: 'stretch',
+  },
+  deleteBtnText: {
+    fontFamily: Fonts.mono,
+    fontSize: 11,
+    color: '#fff',
   },
 });

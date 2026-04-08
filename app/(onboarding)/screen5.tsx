@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback } from "react";
+import React, { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from "react-native";
+import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 import Slider from "@react-native-community/slider";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
@@ -31,6 +32,51 @@ type MultiSlide = SlideBase & {
 };
 type SnapSlide = SlideBase & { type: "snap"; options: string[] };
 type Slide = SingleSlide | MultiSlide | SnapSlide;
+
+const TYPEWRITER_MS = 33;
+const LETTER_FADE_MS = 480;
+const SLIDE_DELAY_MS = 300;
+
+type CharToken = { ch: string };
+type WordToken = { chars: CharToken[]; startIdx: number };
+
+function stringToCharTokens(s: string): CharToken[] {
+  return [...s].map((ch) => ({ ch }));
+}
+
+function charsToWordTokens(chars: CharToken[]): WordToken[] {
+  const words: WordToken[] = [];
+  let i = 0;
+  while (i < chars.length) {
+    const startIdx = i;
+    if (chars[i].ch === "\n") {
+      words.push({ chars: [{ ch: "\n" }], startIdx });
+      i += 1;
+      continue;
+    }
+    const wordChars: CharToken[] = [];
+    while (i < chars.length && chars[i].ch !== " " && chars[i].ch !== "\n") {
+      wordChars.push(chars[i++]);
+    }
+    while (i < chars.length && chars[i].ch === " ") {
+      wordChars.push(chars[i++]);
+    }
+    if (wordChars.length > 0) words.push({ chars: wordChars, startIdx });
+  }
+  return words;
+}
+
+const letterEnter = FadeIn.duration(LETTER_FADE_MS).easing(
+  REasing.out(REasing.cubic)
+);
+
+function FadeLetter({ ch, charStyle }: { ch: string; charStyle: object }) {
+  return (
+    <RAnimated.View entering={letterEnter}>
+      <Text style={charStyle}>{ch}</Text>
+    </RAnimated.View>
+  );
+}
 
 const slides: Slide[] = [
   {
@@ -77,36 +123,119 @@ const slides: Slide[] = [
 function QuestionSlide({
   slide,
   isActive,
+  onTitleComplete,
 }: {
   slide: Slide;
   isActive: boolean;
+  onTitleComplete: () => void;
 }) {
-  const fadeQ = useRef(new Animated.Value(0)).current;
   const fadeHint = useRef(new Animated.Value(0)).current;
+  const questionTokens = useMemo(
+    () => stringToCharTokens(slide.question),
+    [slide.question]
+  );
+  const questionWords = useMemo(
+    () => charsToWordTokens(questionTokens),
+    [questionTokens]
+  );
+  const [visibleCount, setVisibleCount] = useState(0);
+  const completedRef = useRef(false);
+  const onTitleCompleteRef = useRef(onTitleComplete);
+  onTitleCompleteRef.current = onTitleComplete;
+
+  const qLineH = isSmallDevice ? 36 : 44;
+  const questionCharStyle = [styles.questionChar, { lineHeight: qLineH }];
 
   useEffect(() => {
-    if (isActive) {
-      fadeQ.setValue(0);
-      fadeHint.setValue(0);
-      const anim = Animated.stagger(80, [
-        Animated.timing(fadeQ, { toValue: 1, duration: 500, useNativeDriver: true }),
-        Animated.timing(fadeHint, { toValue: 1, duration: 400, useNativeDriver: true }),
-      ]);
-      anim.start();
-      return () => anim.stop();
+    if (!isActive) {
+      setVisibleCount(questionTokens.length);
+      fadeHint.setValue(slide.hint ? 1 : 0);
+      completedRef.current = false;
+      return;
     }
-  }, [isActive]);
+    completedRef.current = false;
+    setVisibleCount(0);
+    fadeHint.setValue(0);
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const delayId = setTimeout(() => {
+      let i = 0;
+      intervalId = setInterval(() => {
+        i += 1;
+        if (i > questionTokens.length) {
+          clearInterval(intervalId!);
+          if (!completedRef.current) {
+            completedRef.current = true;
+            onTitleCompleteRef.current();
+          }
+          return;
+        }
+        const ch = questionTokens[i - 1]?.ch;
+        if (ch && ch !== " " && ch !== "\n") {
+          Haptics.selectionAsync();
+        }
+        setVisibleCount(i);
+      }, TYPEWRITER_MS);
+    }, SLIDE_DELAY_MS);
+    return () => {
+      clearTimeout(delayId);
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isActive, slide.question, slide.hint, fadeHint, questionTokens]);
+
+  useEffect(() => {
+    if (!isActive || !slide.hint) return;
+    if (visibleCount < questionTokens.length) return;
+    const t = setTimeout(() => {
+      Animated.timing(fadeHint, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }).start();
+    }, 0);
+    return () => clearTimeout(t);
+  }, [isActive, slide.hint, visibleCount, questionTokens.length, fadeHint]);
 
   return (
     <View style={styles.questionSlide}>
-      <Animated.Text style={[styles.question, { opacity: fadeQ }]}>
-        {slide.question}
-      </Animated.Text>
-      {slide.hint ? (
-        <Animated.Text style={[styles.hint, { opacity: fadeHint }]}>
-          {slide.hint}
-        </Animated.Text>
-      ) : null}
+      {isActive ? (
+        <>
+          <View style={[styles.questionSlot, { minHeight: qLineH * 3 }]}>
+            <View style={styles.charRow}>
+              {questionWords.map((word, wIdx) => {
+                const charsVisible = Math.max(
+                  0,
+                  Math.min(word.chars.length, visibleCount - word.startIdx)
+                );
+                if (charsVisible === 0) return null;
+                if (word.chars.length === 1 && word.chars[0].ch === "\n") {
+                  return <View key={wIdx} style={styles.lineBreak} />;
+                }
+                return (
+                  <View key={wIdx} style={styles.wordRow}>
+                    {word.chars.slice(0, charsVisible).map((t, cIdx) => (
+                      <FadeLetter
+                        key={`${word.startIdx}-${cIdx}`}
+                        ch={t.ch}
+                        charStyle={questionCharStyle}
+                      />
+                    ))}
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+          {slide.hint ? (
+            <Animated.Text style={[styles.hint, { opacity: fadeHint }]}>
+              {slide.hint}
+            </Animated.Text>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <Text style={styles.questionStatic}>{slide.question}</Text>
+          {slide.hint ? <Text style={styles.hint}>{slide.hint}</Text> : null}
+        </>
+      )}
     </View>
   );
 }
@@ -115,28 +244,31 @@ function QuestionSlide({
 
 function SingleOptions({
   slide,
-  isActive,
+  isSlideCurrent,
+  revealContent,
   selected,
   onSelect,
 }: {
   slide: SingleSlide;
-  isActive: boolean;
+  isSlideCurrent: boolean;
+  revealContent: boolean;
   selected: string | null;
   onSelect: (v: string) => void;
 }) {
   const fadeOpts = useRef(new Animated.Value(0)).current;
+  const visible = isSlideCurrent && revealContent;
 
   useEffect(() => {
     Animated.timing(fadeOpts, {
-      toValue: isActive ? 1 : 0,
+      toValue: visible ? 1 : 0,
       duration: 350,
       useNativeDriver: true,
     }).start();
-  }, [isActive]);
+  }, [visible]);
 
   return (
     <Animated.View
-      pointerEvents={isActive ? "auto" : "none"}
+      pointerEvents={visible ? "auto" : "none"}
       style={[styles.optionsPanel, { opacity: fadeOpts }]}
     >
       {slide.options.map((opt) => {
@@ -160,28 +292,31 @@ function SingleOptions({
 
 function MultiOptions({
   slide,
-  isActive,
+  isSlideCurrent,
+  revealContent,
   selected,
   onToggle,
 }: {
   slide: MultiSlide;
-  isActive: boolean;
+  isSlideCurrent: boolean;
+  revealContent: boolean;
   selected: string[];
   onToggle: (v: string) => void;
 }) {
   const fadeOpts = useRef(new Animated.Value(0)).current;
+  const visible = isSlideCurrent && revealContent;
 
   useEffect(() => {
     Animated.timing(fadeOpts, {
-      toValue: isActive ? 1 : 0,
+      toValue: visible ? 1 : 0,
       duration: 350,
       useNativeDriver: true,
     }).start();
-  }, [isActive]);
+  }, [visible]);
 
   return (
     <Animated.View
-      pointerEvents={isActive ? "auto" : "none"}
+      pointerEvents={visible ? "auto" : "none"}
       style={[styles.optionsPanel, { opacity: fadeOpts }]}
     >
       {slide.options.map((opt) => {
@@ -209,25 +344,28 @@ function MultiOptions({
 
 function SnapOptions({
   slide,
-  isActive,
+  isSlideCurrent,
+  revealContent,
   selectedIdx,
   onSelect,
 }: {
   slide: SnapSlide;
-  isActive: boolean;
+  isSlideCurrent: boolean;
+  revealContent: boolean;
   selectedIdx: number;
   onSelect: (i: number) => void;
 }) {
   const fadeOpts = useRef(new Animated.Value(0)).current;
   const lastIdxRef = useRef(selectedIdx);
+  const visible = isSlideCurrent && revealContent;
 
   useEffect(() => {
     Animated.timing(fadeOpts, {
-      toValue: isActive ? 1 : 0,
+      toValue: visible ? 1 : 0,
       duration: 350,
       useNativeDriver: true,
     }).start();
-  }, [isActive]);
+  }, [visible]);
 
   const handleValueChange = (val: number) => {
     const idx = Math.round(val);
@@ -240,10 +378,10 @@ function SnapOptions({
 
   return (
     <Animated.View
-      pointerEvents={isActive ? "auto" : "none"}
+      pointerEvents={visible ? "auto" : "none"}
       style={[snapStyles.panel, { opacity: fadeOpts }]}
     >
-      <Text style={snapStyles.valueLabel}>{slide.options[selectedIdx]}</Text>
+      <Text style={snapStyles.valueLabel} numberOfLines={1} adjustsFontSizeToFit>{slide.options[selectedIdx]}</Text>
       <Slider
         style={snapStyles.slider}
         minimumValue={0}
@@ -262,23 +400,25 @@ function SnapOptions({
 const snapStyles = StyleSheet.create({
   panel: {
     position: "absolute",
+    top: isSmallDevice ? 24 : 40,
     left: isSmallDevice ? 28 : 32,
     right: isSmallDevice ? 28 : 32,
     alignItems: "center",
-    gap: 28,
+    gap: 14,
   },
   valueLabel: {
     fontSize: isSmallDevice ? 32 : 38,
     color: "#fff",
     fontFamily: Fonts.mono,
     textAlign: "center",
-    height: isSmallDevice ? 90 : 110,
-    textAlignVertical: "center",
-    lineHeight: isSmallDevice ? 42 : 50,
+    height: isSmallDevice ? 44 : 52,
+    lineHeight: isSmallDevice ? 44 : 52,
+    marginTop: 80,
   },
   slider: {
     width: "100%",
-    height: 40,
+    height: 80,
+    marginTop: 50,
   },
 });
 
@@ -287,6 +427,7 @@ const snapStyles = StyleSheet.create({
 export default function Screen5() {
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const [activeIndex, setActiveIndex] = useState(0);
+  const [titleDone, setTitleDone] = useState(false);
   const [ageSelected, setAgeSelected] = useState<string | null>(null);
   const [pillarsSelected, setPillarsSelected] = useState<string[]>([]);
   const [frequencyIdx, setFrequencyIdx] = useState(0);
@@ -298,7 +439,17 @@ export default function Screen5() {
   ).current;
   const fadeContinue = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => { fadeIn(); }, []);
+  useEffect(() => {
+    fadeIn();
+  }, []);
+
+  useEffect(() => {
+    setTitleDone(false);
+  }, [activeIndex]);
+
+  const handleTitleComplete = useCallback(() => {
+    setTitleDone(true);
+  }, []);
 
   useEffect(() => {
     dotAnims.forEach((anim, i) => {
@@ -315,6 +466,8 @@ export default function Screen5() {
       ? ageSelected !== null
       : activeIndex === 1
       ? pillarsSelected.length > 0
+      : activeIndex === 2
+      ? titleDone
       : activeIndex === 3
       ? durationSelected !== null
       : true;
@@ -395,17 +548,23 @@ export default function Screen5() {
             showsHorizontalScrollIndicator={false}
             scrollEventThrottle={16}
             onMomentumScrollEnd={handleScroll}
+            style={styles.questionList}
             renderItem={({ item, index }) => (
-              <QuestionSlide slide={item} isActive={index === activeIndex} />
+              <QuestionSlide
+                slide={item}
+                isActive={index === activeIndex}
+                onTitleComplete={handleTitleComplete}
+              />
             )}
           />
         </View>
 
-        {/* ── middle: options centered ── */}
+        {/* ── middle: options (anchored under question, not vertically centered) ── */}
         <View style={styles.optionsArea}>
           <SingleOptions
             slide={slides[0] as SingleSlide}
-            isActive={activeIndex === 0}
+            isSlideCurrent={activeIndex === 0}
+            revealContent={titleDone}
             selected={ageSelected}
             onSelect={(v) => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -414,13 +573,15 @@ export default function Screen5() {
           />
           <MultiOptions
             slide={slides[1] as MultiSlide}
-            isActive={activeIndex === 1}
+            isSlideCurrent={activeIndex === 1}
+            revealContent={titleDone}
             selected={pillarsSelected}
             onToggle={handleTogglePillar}
           />
           <SnapOptions
             slide={slides[2] as SnapSlide}
-            isActive={activeIndex === 2}
+            isSlideCurrent={activeIndex === 2}
+            revealContent={titleDone}
             selectedIdx={frequencyIdx}
             onSelect={(i) => {
               setFrequencyIdx(i);
@@ -428,7 +589,8 @@ export default function Screen5() {
           />
           <SingleOptions
             slide={slides[3] as SingleSlide}
-            isActive={activeIndex === 3}
+            isSlideCurrent={activeIndex === 3}
+            revealContent={titleDone}
             selected={durationSelected}
             onSelect={(v) => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -465,13 +627,14 @@ const styles = StyleSheet.create({
 
   topSection: {
     paddingHorizontal: 0,
+    flexGrow: 0,
   },
   dots: {
     flexDirection: "row",
     justifyContent: "center",
     gap: 7,
-    paddingTop: 16,
-    paddingBottom: 4,
+    paddingTop: 10,
+    paddingBottom: 20,
   },
   dot: {
     width: 28,
@@ -479,13 +642,38 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: "#fff",
   },
+  questionList: {
+    flexGrow: 0,
+  },
   questionSlide: {
     width,
     paddingHorizontal: isSmallDevice ? 28 : 32,
-    paddingTop: isSmallDevice ? 20 : 28,
-    gap: 8,
+    paddingTop: isSmallDevice ? 4 : 6,
+    gap: 6,
   },
-  question: {
+  questionSlot: {
+    width: "100%",
+    justifyContent: "flex-start",
+  },
+  charRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+    width: "100%",
+  },
+  wordRow: {
+    flexDirection: "row",
+  },
+  lineBreak: {
+    width: "100%",
+    height: 0,
+  },
+  questionChar: {
+    fontSize: isSmallDevice ? 26 : 32,
+    color: "#fff",
+    fontFamily: Fonts.serif,
+  },
+  questionStatic: {
     fontSize: isSmallDevice ? 26 : 32,
     color: "#fff",
     fontFamily: Fonts.serif,
@@ -500,19 +688,21 @@ const styles = StyleSheet.create({
 
   optionsArea: {
     flex: 1,
-    justifyContent: "center",
+    justifyContent: "flex-start",
+    paddingTop: isSmallDevice ? 6 : 20,
     paddingHorizontal: isSmallDevice ? 28 : 32,
   },
   optionsPanel: {
     gap: 10,
     position: "absolute",
+    top: isSmallDevice ? 24 : 50,
     left: isSmallDevice ? 28 : 32,
     right: isSmallDevice ? 28 : 32,
   },
   option: {
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.25)",
-    borderRadius: 50,
+    borderRadius: 15,
     paddingVertical: isSmallDevice ? 13 : 15,
     alignItems: "center",
   },
@@ -538,7 +728,7 @@ const styles = StyleSheet.create({
   footer: {
     paddingHorizontal: isSmallDevice ? 24 : 32,
     paddingBottom: isSmallDevice ? 10 : 10,
-    paddingTop: 12,
+    paddingTop: 6,
   },
   continueButton: {
     borderRadius: 20,

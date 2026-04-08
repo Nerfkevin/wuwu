@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   PanResponder,
 } from "react-native";
+import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MeshGradientView } from "expo-mesh-gradient";
 import * as Haptics from "expo-haptics";
@@ -18,6 +19,47 @@ import { useOnboardingNav } from "./use-onboarding-nav";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
+
+const TYPEWRITER_MS = 33;
+const LETTER_FADE_MS = 480;
+
+type CharToken = { ch: string };
+type WordToken = { chars: CharToken[]; startIdx: number };
+
+function stringToCharTokens(s: string): CharToken[] {
+  return [...s].map((ch) => ({ ch }));
+}
+
+function charsToWordTokens(chars: CharToken[]): WordToken[] {
+  const words: WordToken[] = [];
+  let i = 0;
+  while (i < chars.length) {
+    const startIdx = i;
+    const wordChars: CharToken[] = [];
+    while (i < chars.length && chars[i].ch !== " " && chars[i].ch !== "\n") {
+      wordChars.push(chars[i++]);
+    }
+    while (i < chars.length && (chars[i].ch === " " || chars[i].ch === "\n")) {
+      wordChars.push(chars[i++]);
+    }
+    if (wordChars.length > 0) words.push({ chars: wordChars, startIdx });
+  }
+  return words;
+}
+
+const letterEnter = FadeIn.duration(LETTER_FADE_MS).easing(REasing.out(REasing.cubic));
+
+function FadeLetter({ ch, charStyle }: { ch: string; charStyle: object }) {
+  return (
+    <RAnimated.View entering={letterEnter}>
+      <Text style={charStyle}>{ch}</Text>
+    </RAnimated.View>
+  );
+}
+
+const TITLE = "sign your commitment";
+const TITLE_TOKENS = stringToCharTokens(TITLE);
+const TITLE_WORDS = charsToWordTokens(TITLE_TOKENS);
 
 const COMMITMENTS = [
   "listen to my own voice",
@@ -35,13 +77,40 @@ export default function Screen20() {
   const [hasSignature, setHasSignature] = useState(false);
   const currentPath = useRef("");
   const fadeContinue = useRef(new Animated.Value(0)).current;
+  const fadeContent = useRef(new Animated.Value(0)).current;
+
+  const [titleVisibleCount, setTitleVisibleCount] = useState(0);
+  const [titleDone, setTitleDone] = useState(false);
 
   useEffect(() => {
     fadeIn();
     SecureStore.getItemAsync("user_name").then((val) => {
       if (val) setUserName(val);
     });
+    // start typewriter
+    let i = 0;
+    const id = setInterval(() => {
+      i += 1;
+      if (i > TITLE_TOKENS.length) {
+        clearInterval(id);
+        setTitleDone(true);
+        return;
+      }
+      const ch = TITLE_TOKENS[i - 1]?.ch;
+      if (ch && !/\s/.test(ch)) Haptics.selectionAsync();
+      setTitleVisibleCount(i);
+    }, TYPEWRITER_MS);
+    return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (!titleDone) return;
+    Animated.timing(fadeContent, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+  }, [titleDone]);
 
   useEffect(() => {
     Animated.timing(fadeContinue, {
@@ -92,6 +161,7 @@ export default function Screen20() {
 
   const handleSign = async () => {
     if (!hasSignature) return;
+    await SecureStore.setItemAsync("signature_paths", JSON.stringify(paths));
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     navigateTo("/(onboarding)/screen21");
   };
@@ -117,50 +187,65 @@ export default function Screen20() {
 
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.content}>
-          <Text style={styles.title}>sign your commitment</Text>
-
-          {/* Commitment card */}
-          <View style={styles.card}>
-            <Text style={styles.commitIntro}>
-              {userName ? `I, ${userName}, commit to:` : "I commit to:"}
-            </Text>
-            {COMMITMENTS.map((item) => (
-              <View key={item} style={styles.listItem}>
-                <Text style={styles.checkEmoji}>✅</Text>
-                <Text style={styles.listText}>{item}</Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Signature pad */}
-          <View style={styles.signatureSection}>
-            <View style={styles.signatureBox} {...panResponder.panHandlers}>
-              {!hasSignature && (
-                <View style={styles.placeholder} pointerEvents="none">
-                  <Text style={styles.placeholderText}>Draw your signature on this box</Text>
+          {/* typewriter title */}
+          <View style={styles.titleRow}>
+            {TITLE_WORDS.map((word, wIdx) => {
+              const charsVisible = Math.max(0, Math.min(word.chars.length, titleVisibleCount - word.startIdx));
+              if (charsVisible === 0) return null;
+              return (
+                <View key={wIdx} style={styles.wordRow}>
+                  {word.chars.slice(0, charsVisible).map((t, cIdx) => (
+                    <FadeLetter key={`t-${word.startIdx}-${cIdx}`} ch={t.ch} charStyle={styles.titleChar} />
+                  ))}
                 </View>
-              )}
-              <Svg height={PAD_HEIGHT} width="100%" style={StyleSheet.absoluteFill}>
-                {paths.map((d, i) => (
-                  <SvgPath
-                    key={i}
-                    d={d}
-                    stroke="#1A0535"
-                    strokeWidth={2.5}
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                ))}
-              </Svg>
-              {hasSignature && (
-                <TouchableOpacity style={styles.clearBtn} onPress={handleClear}>
-                  <Text style={styles.clearText}>clear</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            <Text style={styles.hint}>sign as a reminder of the promise you're making to yourself.</Text>
+              );
+            })}
           </View>
+
+          <Animated.View style={{ opacity: fadeContent, gap: isSmallDevice ? 20 : 24 }}>
+            {/* Commitment card */}
+            <View style={styles.card}>
+              <Text style={styles.commitIntro}>
+                {userName ? `I, ${userName}, commit to:` : "I commit to:"}
+              </Text>
+              {COMMITMENTS.map((item) => (
+                <View key={item} style={styles.listItem}>
+                  <Text style={styles.checkEmoji}>✅</Text>
+                  <Text style={styles.listText}>{item}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Signature pad */}
+            <View style={styles.signatureSection}>
+              <View style={styles.signatureBox} {...panResponder.panHandlers}>
+                {!hasSignature && (
+                  <View style={styles.placeholder} pointerEvents="none">
+                    <Text style={styles.placeholderText}>Draw your signature on this box</Text>
+                  </View>
+                )}
+                <Svg height={PAD_HEIGHT} width="100%" style={StyleSheet.absoluteFill}>
+                  {paths.map((d, i) => (
+                    <SvgPath
+                      key={i}
+                      d={d}
+                      stroke="#1A0535"
+                      strokeWidth={2.5}
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  ))}
+                </Svg>
+                {hasSignature && (
+                  <TouchableOpacity style={styles.clearBtn} onPress={handleClear}>
+                    <Text style={styles.clearText}>clear</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              <Text style={styles.hint}>sign as a reminder of the promise you're making to yourself.</Text>
+            </View>
+          </Animated.View>
         </View>
 
         {/* Footer */}
@@ -191,14 +276,20 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
 
-  title: {
-    fontSize: isSmallDevice ? 22 : 28,
-    color: "#fff",
-    fontFamily: Fonts.mono,
-    textAlign: "center",
+  titleRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     marginTop: isSmallDevice ? 24 : 32,
     marginBottom: isSmallDevice ? 20 : 28,
-    letterSpacing: 0.3,
+  },
+  wordRow: {
+    flexDirection: "row",
+  },
+  titleChar: {
+    fontSize: isSmallDevice ? 28 : 34,
+    color: "#fff",
+    fontFamily: Fonts.serif,
+    lineHeight: isSmallDevice ? 34 : 40,
   },
 
   card: {

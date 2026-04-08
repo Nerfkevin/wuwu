@@ -11,6 +11,7 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from "react-native";
+import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { Fonts } from "@/constants/theme";
@@ -21,6 +22,78 @@ const isSmallDevice = width < 380;
 
 type Segment = { text: string; bold?: boolean };
 type Slide = { id: string; image: number; segments: Segment[] };
+type CharToken = { ch: string; bold: boolean };
+type WordToken = { chars: CharToken[]; startIdx: number };
+
+const TYPEWRITER_MS = 28;
+const LETTER_FADE_MS = 480;
+
+function slideToCharTokens(slide: Slide): CharToken[] {
+  const out: CharToken[] = [];
+  for (const seg of slide.segments) {
+    const bold = !!seg.bold;
+    for (const ch of seg.text) {
+      out.push({ ch, bold });
+    }
+  }
+  return out;
+}
+
+function charsToWordTokens(chars: CharToken[]): WordToken[] {
+  const words: WordToken[] = [];
+  let i = 0;
+  while (i < chars.length) {
+    const startIdx = i;
+    const wordChars: CharToken[] = [];
+    while (i < chars.length && chars[i].ch !== " ") {
+      wordChars.push(chars[i++]);
+    }
+    while (i < chars.length && chars[i].ch === " ") {
+      wordChars.push(chars[i++]);
+    }
+    if (wordChars.length > 0) words.push({ chars: wordChars, startIdx });
+  }
+  return words;
+}
+
+function renderCharRuns(tokens: CharToken[], visibleCount: number): React.ReactNode[] {
+  const slice = tokens.slice(0, visibleCount);
+  const nodes: React.ReactNode[] = [];
+  let i = 0;
+  let runKey = 0;
+  while (i < slice.length) {
+    const bold = slice[i].bold;
+    let run = "";
+    while (i < slice.length && slice[i].bold === bold) {
+      run += slice[i].ch;
+      i++;
+    }
+    nodes.push(
+      bold ? (
+        <Text key={runKey++} style={styles.boldText}>
+          {run}
+        </Text>
+      ) : (
+        <Text key={runKey++}>{run}</Text>
+      )
+    );
+  }
+  return nodes;
+}
+
+const enterAnim = FadeIn.duration(LETTER_FADE_MS).easing(
+  REasing.out(REasing.cubic)
+);
+
+function FadeLetter({ ch, bold }: { ch: string; bold: boolean }) {
+  return (
+    <RAnimated.View entering={enterAnim}>
+      <Text style={bold ? [styles.charText, styles.boldText] : styles.charText}>
+        {ch}
+      </Text>
+    </RAnimated.View>
+  );
+}
 
 const slides: Slide[] = [
   {
@@ -61,38 +134,75 @@ const slides: Slide[] = [
 function TextSlide({
   slide,
   isActive,
+  imageDelay,
+  onComplete,
 }: {
   slide: Slide;
   isActive: boolean;
+  imageDelay: number;
+  onComplete?: () => void;
 }) {
-  const fadeText = useRef(new Animated.Value(isActive ? 1 : 0)).current;
+  const tokens = useRef(slideToCharTokens(slide)).current;
+  const words = useRef(charsToWordTokens(tokens)).current;
+  const [visibleCount, setVisibleCount] = useState(() =>
+    isActive ? 0 : tokens.length
+  );
 
   useEffect(() => {
-    if (isActive) {
-      fadeText.setValue(0);
-      const anim = Animated.timing(fadeText, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: true,
-      });
-      anim.start();
-      return () => anim.stop();
+    if (!isActive) {
+      setVisibleCount(tokens.length);
+      return;
     }
-  }, [isActive]);
+
+    setVisibleCount(0);
+    let intervalId: ReturnType<typeof setInterval>;
+    const timeoutId = setTimeout(() => {
+      let i = 0;
+      intervalId = setInterval(() => {
+        i += 1;
+        if (i > tokens.length) {
+          clearInterval(intervalId);
+          onComplete?.();
+          return;
+        }
+        const ch = tokens[i - 1]?.ch;
+        if (ch && !/\s/.test(ch)) {
+          Haptics.selectionAsync();
+        }
+        setVisibleCount(i);
+      }, TYPEWRITER_MS);
+    }, imageDelay);
+
+    return () => {
+      clearTimeout(timeoutId);
+      clearInterval(intervalId);
+    };
+  }, [isActive, tokens, imageDelay]);
 
   return (
     <View style={styles.textSlide}>
-      <Animated.Text style={[styles.slideText, { opacity: fadeText }]}>
-        {slide.segments.map((seg, i) =>
-          seg.bold ? (
-            <Text key={i} style={styles.boldText}>
-              {seg.text}
-            </Text>
-          ) : (
-            <Text key={i}>{seg.text}</Text>
-          )
-        )}
-      </Animated.Text>
+      {isActive ? (
+        <View style={styles.charRow}>
+          {words.map((word, wIdx) => {
+            const charsVisible = Math.max(
+              0,
+              Math.min(word.chars.length, visibleCount - word.startIdx)
+            );
+            if (charsVisible === 0) return null;
+            return (
+              <View key={wIdx} style={styles.wordRow}>
+                {word.chars.slice(0, charsVisible).map((t, cIdx) => (
+                  <FadeLetter key={cIdx} ch={t.ch} bold={t.bold} />
+                ))}
+              </View>
+            );
+          })}
+        </View>
+      ) : (
+        <Text style={styles.slideText}>
+          {renderCharRuns(tokens, tokens.length)}
+        </Text>
+      )}
     </View>
   );
 }
@@ -100,6 +210,7 @@ function TextSlide({
 export default function Screen2() {
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const [activeIndex, setActiveIndex] = useState(0);
+  const [typingDone, setTypingDone] = useState(false);
   const listRef = useRef<FlatList>(null);
 
   const dotAnims = useRef(
@@ -112,10 +223,14 @@ export default function Screen2() {
     fadeIn();
     Animated.timing(imgOpacities[0], {
       toValue: 1,
-      duration: 600,
+      duration: 900,
       useNativeDriver: true,
     }).start();
   }, []);
+
+  useEffect(() => {
+    setTypingDone(false);
+  }, [activeIndex]);
 
   useEffect(() => {
     // Animate dots
@@ -132,7 +247,7 @@ export default function Screen2() {
       imgOpacities.map((anim, i) =>
         Animated.timing(anim, {
           toValue: i === activeIndex ? 1 : 0,
-          duration: 400,
+          duration: 700,
           useNativeDriver: true,
         })
       )
@@ -184,7 +299,12 @@ export default function Screen2() {
           scrollEventThrottle={16}
           onMomentumScrollEnd={handleScroll}
           renderItem={({ item, index }) => (
-            <TextSlide slide={item} isActive={index === activeIndex} />
+            <TextSlide
+              slide={item}
+              isActive={index === activeIndex}
+              imageDelay={index === 0 ? 620 : 420}
+              onComplete={index === activeIndex ? () => setTypingDone(true) : undefined}
+            />
           )}
           style={styles.list}
         />
@@ -208,8 +328,8 @@ export default function Screen2() {
         {/* Arrow */}
         <View style={styles.footer}>
           <TouchableOpacity
-            style={styles.arrowButton}
-            onPress={handleArrow}
+            style={[styles.arrowButton, !typingDone && styles.arrowButtonDisabled]}
+            onPress={typingDone ? handleArrow : undefined}
             activeOpacity={0.75}
           >
             <Text style={styles.arrowText}>→</Text>
@@ -249,6 +369,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: isSmallDevice ? 28 : 36,
     justifyContent: "flex-start",
   },
+  charRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: isSmallDevice ? 20 : 20,
+  },
+  wordRow: {
+    flexDirection: "row",
+  },
+  charText: {
+    fontSize: isSmallDevice ? 28 : 32,
+    color: "#fff",
+    fontFamily: Fonts.serif,
+    lineHeight: isSmallDevice ? 34 : 40,
+  },
   slideText: {
     fontSize: isSmallDevice ? 28 : 32,
     color: "#fff",
@@ -273,7 +407,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     paddingHorizontal: isSmallDevice ? 24 : 32,
-    paddingBottom: isSmallDevice ? 20 : 32,
+    paddingBottom: isSmallDevice ? 10 : 10,
     alignItems: "flex-end",
   },
   arrowButton: {
@@ -283,6 +417,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
+  },
+  arrowButtonDisabled: {
+    opacity: 0.3,
   },
   arrowText: {
     fontSize: 18,

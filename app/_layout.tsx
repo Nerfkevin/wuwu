@@ -7,21 +7,24 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Arapey_400Regular, Arapey_400Regular_Italic } from '@expo-google-fonts/arapey';
+import {
+  InstrumentSerif_400Regular,
+  InstrumentSerif_400Regular_Italic,
+} from '@expo-google-fonts/instrument-serif';
 import { SpaceMono_400Regular } from '@expo-google-fonts/space-mono';
 import { Colors, Fonts } from '@/constants/theme';
 import { configureMixedPlaybackAsync } from '@/lib/audio-playback';
 import Superwall from '@superwall/react-native-superwall';
 
-const SUPERWALL_API_KEY_IOS = 'YOUR_SUPERWALL_IOS_KEY';
+const SUPERWALL_API_KEY_IOS = 'pk_5L3AcVB9DaMbr9E9M79vc';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [loaded] = useFonts({
-    Arapey_400Regular,
-    Arapey_400Regular_Italic,
+    InstrumentSerif_400Regular,
+    InstrumentSerif_400Regular_Italic,
     SpaceMono_400Regular,
   });
 
@@ -65,14 +68,15 @@ export default function RootLayout() {
           }}>
           <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="session/selection" options={{ title: 'Choose Soundscape', headerShown: false, presentation: 'card' }} />
+          <Stack.Screen name="session/selection" options={{ title: 'Choose Soundscape', headerShown: false, presentation: 'card', animation: 'fade' }} />
           <Stack.Screen name="session/playback" options={{ title: 'Session', headerShown: false, presentation: 'fullScreenModal' }} />
-          <Stack.Screen name="add/pillar" options={{ title: 'Select Affirmation Pillar', headerShown: false, presentation: 'card' }} />
+          <Stack.Screen name="add/pillar" options={{ title: 'Select Affirmation Pillar', headerShown: false, presentation: 'card', animation: 'fade' }} />
           <Stack.Screen name="add/affirmation" options={{ title: 'Select Affirmation', headerShown: false, presentation: 'card' }} />
-          <Stack.Screen name="add/write" options={{ title: 'Write Affirmation', presentation: 'card' }} />
-          <Stack.Screen name="add/record" options={{ title: 'Record', presentation: 'card' }} />
-          <Stack.Screen name="add/recording" options={{ title: 'Record', presentation: 'card' }} />
-          <Stack.Screen name="add/review" options={{ title: 'Review', presentation: 'card' }} />
+          <Stack.Screen name="add/write" options={{ title: 'Write Affirmation', headerShown: false, presentation: 'modal', gestureEnabled: false }} />
+          <Stack.Screen name="add/record" options={{ title: 'Record', headerShown: false, presentation: 'modal', gestureEnabled: false }} />
+          <Stack.Screen name="add/recording" options={{ title: 'Record', headerShown: false, presentation: 'modal', gestureEnabled: false, animation: 'fade' }} />
+          <Stack.Screen name="add/review" options={{ title: 'Review', headerShown: false, presentation: 'modal', gestureEnabled: false }} />
+          <Stack.Screen name="streak" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'fade' }} />
         </Stack>
         <StatusBar style="light" />
       </ThemeProvider>

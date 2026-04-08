@@ -1,12 +1,56 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import { View, Text, StyleSheet, Image, Dimensions, Animated, Platform, TouchableOpacity } from "react-native";
-import { useRouter } from "expo-router";
+import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useOnboardingNav } from "./use-onboarding-nav";
 import * as Notifications from "expo-notifications";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { scheduleAffirmationReminder } from "@/lib/affirmation-reminder";
 import { Fonts } from "@/constants/theme";
+
+const TYPEWRITER_MS = 33;
+const LETTER_FADE_MS = 480;
+const SLIDE_DELAY_MS = 300;
+
+type CharToken = { ch: string };
+type WordToken = { chars: CharToken[]; startIdx: number };
+
+function stringToCharTokens(s: string): CharToken[] {
+  return [...s].map((ch) => ({ ch }));
+}
+
+function charsToWordTokens(chars: CharToken[]): WordToken[] {
+  const words: WordToken[] = [];
+  let i = 0;
+  while (i < chars.length) {
+    const startIdx = i;
+    if (chars[i].ch === "\n") {
+      words.push({ chars: [{ ch: "\n" }], startIdx });
+      i += 1;
+      continue;
+    }
+    const wordChars: CharToken[] = [];
+    while (i < chars.length && chars[i].ch !== " " && chars[i].ch !== "\n") {
+      wordChars.push(chars[i++]);
+    }
+    while (i < chars.length && chars[i].ch === " ") {
+      wordChars.push(chars[i++]);
+    }
+    if (wordChars.length > 0) words.push({ chars: wordChars, startIdx });
+  }
+  return words;
+}
+
+const letterEnter = FadeIn.duration(LETTER_FADE_MS).easing(REasing.out(REasing.cubic));
+
+function FadeLetter({ ch, charStyle }: { ch: string; charStyle: object }) {
+  return (
+    <RAnimated.View entering={letterEnter}>
+      <Text style={charStyle}>{ch}</Text>
+    </RAnimated.View>
+  );
+}
 
 const { width, height } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -23,20 +67,37 @@ Notifications.setNotificationHandler({
 });
 
 export default function Screen17() {
-  const router = useRouter();
+  const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const insets = useSafeAreaInsets();
 
+  const TITLE_TEXT = "Reminder to start your\naffirmation session";
+  const titleTokens = useMemo(() => stringToCharTokens(TITLE_TEXT), []);
+  const titleWords = useMemo(() => charsToWordTokens(titleTokens), [titleTokens]);
+  const [visibleCount, setVisibleCount] = useState(0);
+
   const [buttonEnabled, setButtonEnabled] = useState(false);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
   const fingerAnim = useRef(new Animated.Value(0)).current;
   const buttonFadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 800,
-      useNativeDriver: true,
-    }).start();
+    fadeIn();
+
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const delayId = setTimeout(() => {
+      let i = 0;
+      intervalId = setInterval(() => {
+        i += 1;
+        if (i > titleTokens.length) {
+          clearInterval(intervalId!);
+          return;
+        }
+        const ch = titleTokens[i - 1]?.ch;
+        if (ch && ch !== " " && ch !== "\n") {
+          Haptics.selectionAsync();
+        }
+        setVisibleCount(i);
+      }, TYPEWRITER_MS);
+    }, SLIDE_DELAY_MS);
 
     Animated.loop(
       Animated.sequence([
@@ -97,16 +158,20 @@ export default function Screen17() {
       requestPermissions();
     }, 1500);
 
-    return () => clearTimeout(permissionTimeout);
+    return () => {
+      clearTimeout(delayId);
+      if (intervalId) clearInterval(intervalId);
+      clearTimeout(permissionTimeout);
+    };
   }, []);
 
   const handleContinue = async () => {
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      router.push("/(onboarding)/screen18" as any);
+      navigateTo("/(onboarding)/screen18");
     } catch (error) {
       console.error("[Screen17] Error in handleContinue:", error);
-      router.push("/(onboarding)/screen18" as any);
+      navigateTo("/(onboarding)/screen18");
     }
   };
 
@@ -121,14 +186,34 @@ export default function Screen17() {
   });
 
   return (
-    <View style={styles.container}>
+    <Animated.View style={[styles.container, { opacity: contentOpacity }]}>
       <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
-        <Animated.View
-          style={[styles.content, isSmallScreen && styles.contentSmall, { opacity: fadeAnim }]}
-        >
-          <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>
-            Reminder to start your{"\n"}affirmation session
-          </Text>
+        <View style={[styles.content, isSmallScreen && styles.contentSmall]}>
+          <View style={[styles.titleSlot, isSmallScreen && styles.titleSlotSmall]}>
+            <View style={styles.charRow}>
+              {titleWords.map((word, wIdx) => {
+                const charsVisible = Math.max(
+                  0,
+                  Math.min(word.chars.length, visibleCount - word.startIdx)
+                );
+                if (charsVisible === 0) return null;
+                if (word.chars.length === 1 && word.chars[0].ch === "\n") {
+                  return <View key={wIdx} style={styles.lineBreak} />;
+                }
+                return (
+                  <View key={wIdx} style={styles.wordRow}>
+                    {word.chars.slice(0, charsVisible).map((t, cIdx) => (
+                      <FadeLetter
+                        key={`${word.startIdx}-${cIdx}`}
+                        ch={t.ch}
+                        charStyle={[styles.titleChar, isSmallScreen && styles.titleCharSmall]}
+                      />
+                    ))}
+                  </View>
+                );
+              })}
+            </View>
+          </View>
 
           <View style={styles.notificationContainer}>
             <Image
@@ -147,7 +232,7 @@ export default function Screen17() {
               resizeMode="contain"
             />
           </View>
-        </Animated.View>
+        </View>
 
         <View style={[styles.footer, { paddingBottom: insets.bottom + 10 }]}>
           <TouchableOpacity
@@ -163,7 +248,7 @@ export default function Screen17() {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -183,19 +268,37 @@ const styles = StyleSheet.create({
   contentSmall: {
     paddingTop: 40,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#FFFFFF",
+  titleSlot: {
+    width: "100%",
+    height: 88,
     marginBottom: 140,
-    textAlign: "center",
-    lineHeight: 36,
-    fontFamily: Fonts.mono,
   },
-  titleSmall: {
+  titleSlotSmall: {
+    height: 72,
     marginBottom: 80,
-    fontSize: 24,
-    lineHeight: 32,
+  },
+  charRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+    width: "100%",
+  },
+  wordRow: {
+    flexDirection: "row",
+  },
+  lineBreak: {
+    width: "100%",
+    height: 0,
+  },
+  titleChar: {
+    fontSize: isSmallDevice ? 26 : 32,
+    color: "#fff",
+    fontFamily: Fonts.serif,
+    lineHeight: isSmallDevice ? 34 : 42,
+  },
+  titleCharSmall: {
+    fontSize: 26,
+    lineHeight: 36,
   },
   notificationContainer: {
     width: "100%",
@@ -225,7 +328,7 @@ const styles = StyleSheet.create({
   footer: {
     paddingHorizontal: isSmallDevice ? 24 : 32,
     paddingBottom: isSmallDevice ? 10 : 10,
-    paddingTop: 12,
+    paddingTop: 10,
   },
   continueButton: {
     borderRadius: 20,

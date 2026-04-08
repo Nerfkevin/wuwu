@@ -121,7 +121,7 @@ export const GlowPresets = {
       }
     ]
   }),
-  ripple: (radius: number, primaryColor: string): PresetConfig => ({
+  ripple: (radius: number, primaryColor: string, defaultGlowScale: number = 1): PresetConfig => ({
     metadata: {
       name: 'Ripple',
       textColor: '#FFFFFF',
@@ -146,7 +146,7 @@ export const GlowPresets = {
                 withOpacity(primaryColor, 0.6),
                 'rgba(0, 0, 0, 0)'
               ],
-              glowSize: 10,
+              glowSize: 10 * defaultGlowScale,
               opacity: 0.42,
               speedMultiplier: 1,
               coverage: 1
@@ -158,7 +158,7 @@ export const GlowPresets = {
                 withOpacity(primaryColor, 0.58),
                 'rgba(0, 0, 0, 0)'
               ],
-              glowSize: 3,
+              glowSize: 3 * defaultGlowScale,
               opacity: 1,
               speedMultiplier: 1,
               coverage: 1
@@ -170,7 +170,7 @@ export const GlowPresets = {
                 withOpacity(primaryColor, 0.45),
                 'rgba(0, 0, 0, 0)'
               ],
-              glowSize: [1, 2, 2, 1],
+              glowSize: [1, 2, 2, 1].map(v => v * defaultGlowScale) as any,
               opacity: 1,
               speedMultiplier: 1,
               coverage: 1

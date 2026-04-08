@@ -129,10 +129,6 @@ export default function Screen15() {
       : selectedColor;
 
   const totalMessages = recordings.length;
-  const progressPercent =
-    totalMessages <= 1
-      ? totalMessages === 1 ? 100 : 0
-      : (currentTrackIndex / (totalMessages - 1)) * 100;
   const progressLabel =
     totalMessages > 0
       ? `${Math.min(currentTrackIndex + 1, totalMessages)}/${totalMessages}`
@@ -511,47 +507,66 @@ export default function Screen15() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={styles.container}>
-        <LinearGradient
-          colors={[Colors.background, '#1A0B2E', Colors.background]}
-          locations={[0, 0.4, 1]}
-          style={StyleSheet.absoluteFill}
-        />
         <SafeAreaView
           style={[
             styles.safeArea,
-            { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 24 },
+            { paddingTop: insets.top + 6, paddingBottom: insets.bottom + 24 },
           ]}
           edges={[]}
         >
-          {/* Progress bar */}
-          <View style={styles.topProgressContainer}>
-            <View
-              style={[styles.topProgressBar, { width: `${progressPercent}%` }]}
-            />
+          <View style={styles.brandTitleWrap}>
+            <Text style={styles.brandTitle}>Wu-Wu</Text>
           </View>
 
-          {/* Header */}
           <View style={styles.header}>
-            <View>
+            <View style={styles.headerLeftCol}>
+              <LinearGradient
+                colors={[
+                  'rgba(200, 200, 205, 0)',
+                  'rgba(200, 200, 205, 0.35)',
+                  'rgba(220, 220, 225, 0.85)',
+                  'rgba(200, 200, 205, 0.35)',
+                  'rgba(200, 200, 205, 0)',
+                ]}
+                locations={[0, 0.22, 0.5, 0.78, 1]}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={[styles.headerTaperLine, styles.headerTaperLineLeft]}
+              />
               <Text style={styles.headerLabel}>Affirmation</Text>
               <Text style={styles.headerValue}>{progressLabel}</Text>
             </View>
             <View style={styles.headerRight}>
-              <Pressable style={styles.soundToggle} onPress={toggleMute}>
-                <Ionicons name={freqIconName} size={16} color={freqIconColor} />
-                <Text style={[styles.headerLabel, { color: freqIconColor }]}>
-                  {settings.freq} Hz
-                </Text>
-              </Pressable>
-              {shouldPlayBrainwave ? (
-                <Text style={styles.headerValue}>
-                  {BRAINWAVE_LABELS[settings.brainwave] ?? settings.brainwave}
-                </Text>
-              ) : shouldPlayPure ? (
-                <Text style={styles.headerValue}>Pure</Text>
-              ) : (
-                <Text style={styles.headerValue}>Singing Bowl</Text>
-              )}
+              <View style={styles.headerRightInner}>
+                <LinearGradient
+                  colors={[
+                    'rgba(200, 200, 205, 0)',
+                    'rgba(200, 200, 205, 0.35)',
+                    'rgba(220, 220, 225, 0.85)',
+                    'rgba(200, 200, 205, 0.35)',
+                    'rgba(200, 200, 205, 0)',
+                  ]}
+                  locations={[0, 0.22, 0.5, 0.78, 1]}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={[styles.headerTaperLine, styles.headerTaperLineRight]}
+                />
+                <Pressable style={styles.soundToggle} onPress={toggleMute}>
+                  <Ionicons name={freqIconName} size={16} color={freqIconColor} />
+                  <Text style={[styles.headerLabel, { color: freqIconColor }]}>
+                    {settings.freq} Hz
+                  </Text>
+                </Pressable>
+                {shouldPlayBrainwave ? (
+                  <Text style={styles.headerValue}>
+                    {BRAINWAVE_LABELS[settings.brainwave] ?? settings.brainwave}
+                  </Text>
+                ) : shouldPlayPure ? (
+                  <Text style={styles.headerValue}>Pure</Text>
+                ) : (
+                  <Text style={styles.headerValue}>Singing Bowl</Text>
+                )}
+              </View>
             </View>
           </View>
 
@@ -591,26 +606,31 @@ export default function Screen15() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+  container: { flex: 1, backgroundColor: 'transparent' },
   safeArea: { flex: 1, paddingHorizontal: 24 },
-  topProgressContainer: {
-    width: '100%',
-    height: 4,
-    backgroundColor: '#333',
-    borderRadius: 2,
-    marginTop: 10,
+  brandTitleWrap: { alignItems: 'center', marginTop: 2, marginBottom: 2 },
+  brandTitle: {
+    fontFamily: Fonts.serif,
+    fontSize: 26,
+    color: Colors.text,
+    letterSpacing: 0.5,
   },
-  topProgressBar: {
-    height: '100%',
-    backgroundColor: Colors.chakra.orange,
-    borderRadius: 2,
+  headerTaperLine: {
+    width: 96,
+    height: 2,
+    marginBottom: 8,
+    borderRadius: 1,
   },
+  headerTaperLineLeft: { alignSelf: 'flex-start' },
+  headerTaperLineRight: { alignSelf: 'flex-end' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 20,
+    alignItems: 'flex-start',
+    marginTop: 6,
     marginBottom: 10,
   },
+  headerLeftCol: { flex: 1, minWidth: 0, alignItems: 'flex-start' },
   headerLabel: {
     fontFamily: Fonts.mono,
     fontSize: 12,
@@ -618,7 +638,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   headerValue: { fontFamily: Fonts.mono, fontSize: 14, color: Colors.text },
-  headerRight: { alignItems: 'flex-end', gap: 6 },
+  headerRight: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
+  headerRightInner: { alignItems: 'flex-end', gap: 6 },
   soundToggle: {
     flexDirection: 'row',
     alignItems: 'center',

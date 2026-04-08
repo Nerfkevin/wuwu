@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { createAudioPlayer } from 'expo-audio';
 import type { AudioPlayer } from 'expo-audio';
 import { AFFIRMATION_PILLARS } from '@/constants/affirmations';
+import * as Haptics from 'expo-haptics';
 import { Colors, Fonts } from '@/constants/theme';
 import AffirmationCard from './components/affirmation-card';
 import {
@@ -245,7 +246,7 @@ export default function LibraryRecordingScreen() {
       />
 
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }} style={styles.backButton}>
           <Ionicons name="chevron-back" size={24} color={Colors.text} />
         </TouchableOpacity>
       </View>
@@ -264,20 +265,20 @@ export default function LibraryRecordingScreen() {
             <View style={styles.progressTrack}>
               <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
             </View>
-            <TouchableOpacity style={styles.playButton} onPress={handlePlayback}>
+            <TouchableOpacity style={styles.playButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); handlePlayback(); }}>
               <Ionicons name={isPlaying ? 'pause' : 'play'} size={22} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
 
           <View style={styles.actionsRow}>
-            <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
+            <TouchableOpacity style={styles.deleteBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleDelete(); }}>
               <Ionicons
                 name={isCustomPlaylist ? 'remove-circle-outline' : 'trash-outline'}
                 size={26}
                 color="#FF4D4F"
               />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.addToPlaylistBtn} onPress={handleOpenAddToPlaylist}>
+            <TouchableOpacity style={styles.addToPlaylistBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); handleOpenAddToPlaylist(); }}>
               <Ionicons name="list-outline" size={26} color={Colors.chakra.violet} />
             </TouchableOpacity>
           </View>
@@ -325,7 +326,7 @@ export default function LibraryRecordingScreen() {
                   renderItem={({ item }) => (
                     <TouchableOpacity
                       style={styles.playlistRow}
-                      onPress={() => handleSelectPlaylist(item)}
+                      onPress={() => { Haptics.selectionAsync(); handleSelectPlaylist(item); }}
                     >
                       <Ionicons name="musical-notes-outline" size={18} color={Colors.textSecondary} />
                       <Text style={styles.playlistRowText}>{item.name}</Text>
@@ -353,7 +354,7 @@ export default function LibraryRecordingScreen() {
                       styles.createConfirmBtn,
                       !newPlaylistName.trim() && styles.createConfirmBtnDisabled,
                     ]}
-                    onPress={handleCreateAndAdd}
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleCreateAndAdd(); }}
                     disabled={!newPlaylistName.trim()}
                   >
                     <Ionicons name="checkmark" size={18} color="#000" />
@@ -362,7 +363,7 @@ export default function LibraryRecordingScreen() {
               ) : (
                 <TouchableOpacity
                   style={styles.newPlaylistBtn}
-                  onPress={() => setShowCreateInput(true)}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowCreateInput(true); }}
                 >
                   <Ionicons name="add-circle-outline" size={18} color={Colors.chakra.violet} />
                   <Text style={styles.newPlaylistBtnText}>New Playlist</Text>

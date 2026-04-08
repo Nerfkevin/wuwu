@@ -22,8 +22,8 @@ export const Colors = {
 };
 
 export const Fonts = {
-  serif: 'Arapey_400Regular',
-  serifBold: 'Arapey_400Regular_Italic',
+  serif: 'InstrumentSerif_400Regular',
+  serifBold: 'InstrumentSerif_400Regular_Italic',
   mono: 'SpaceMono_400Regular',
 };
 

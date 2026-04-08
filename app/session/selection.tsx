@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import * as Haptics from 'expo-haptics';
 import {
   StyleSheet,
   Text,
@@ -12,6 +13,7 @@ import {
   Modal,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
+import { MeshGradientView } from 'expo-mesh-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
 import { Colors, Fonts } from '@/constants/theme';
@@ -71,7 +73,7 @@ const FrequencyItem = ({ item, isSelected, onSelect }: { item: typeof FREQUENCIE
           { borderColor: item.color },
           isSelected && { backgroundColor: item.color + '20' }
         ]}
-        onPress={onSelect}
+        onPress={() => { Haptics.selectionAsync(); onSelect(); }}
         // Remove direct state setting on press to let selection control it, 
         // or combine them. But for "clicked on gets to current thickness", 
         // we should probably rely on isSelected.
@@ -92,7 +94,7 @@ export default function SelectionScreen() {
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [chosenPlaylistId, setChosenPlaylistId] = useState<string>(ALL_PLAYLIST_ID);
-  const { previewFrequency, previewBrainwave } = useFrequencyPreview();
+  const { previewFrequency, previewBrainwave, stopPreview } = useFrequencyPreview();
 
   const renderFreqItem = ({ item }: { item: typeof FREQUENCIES[0] }) => {
     return (
@@ -116,6 +118,7 @@ export default function SelectionScreen() {
   };
 
   const handleContinue = async () => {
+    stopPreview();
     const pls = await getPlaylists();
     if (pls.length === 0) {
       navigateToPlayback(ALL_PLAYLIST_ID);
@@ -139,19 +142,40 @@ export default function SelectionScreen() {
 
   return (
     <View style={styles.container}>
+      <MeshGradientView
+        style={StyleSheet.absoluteFill}
+        columns={3}
+        rows={3}
+        colors={[
+          '#1A0A30', '#160720', '#120530',
+          '#1C1035', '#0E061A', '#120830',
+          '#080220', '#0C0828', '#07041A',
+        ]}
+        points={[
+          [0.0, 0.0], [0.5, 0.0], [1.0, 0.0],
+          [0.0, 0.5], [0.5, 0.5], [1.0, 0.5],
+          [0.0, 1.0], [0.5, 1.0], [1.0, 1.0],
+        ]}
+        smoothsColors
+      />
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); stopPreview(); router.back(); }} style={styles.backButton}>
           <Ionicons name="chevron-back" size={24} color={Colors.text} />
         </TouchableOpacity>
       </View>
 
       <View style={styles.content}>
-        <View>
-          <Text style={styles.mainTitle}>layer healing{'\n'}frequency</Text>
-          <Text style={styles.subtitle}>
-            select a frequency and soundscape{'\n'}that aligns with your subconscious{'\n'}goals
-          </Text>
+        <View style={styles.titleBlock}>
+          <View style={styles.titleRow}>
+            <View style={styles.titleTextBlock}>
+              <Text style={styles.mainTitle}>layer healing{'\n'}frequency</Text>
+              <Text style={styles.subtitle}>
+                select a frequency and soundscape{'\n'}that aligns with your subconscious{'\n'}goals
+              </Text>
+            </View>
+            <Ionicons name="pulse" size={46} color={Colors.textSecondary} style={styles.titleIcon} />
+          </View>
         </View>
 
         {/* BG selector — horizontal scroll, below subtitle */}
@@ -165,7 +189,7 @@ export default function SelectionScreen() {
             <TouchableOpacity
               key={bg}
               style={[styles.bgItem, selectedBg === bg && styles.bgItemSelected]}
-              onPress={() => setSelectedBg(bg)}
+              onPress={() => { Haptics.selectionAsync(); stopPreview(); setSelectedBg(bg); }}
             >
               <Text style={[styles.bgText, selectedBg === bg && styles.bgTextSelected]}>{bg}</Text>
             </TouchableOpacity>
@@ -189,7 +213,7 @@ export default function SelectionScreen() {
                       { borderColor: item.color },
                       selectedBrainwave === item.id && { backgroundColor: item.color + '20' },
                     ]}
-                    onPress={() => { setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
+                    onPress={() => { Haptics.selectionAsync(); setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
                   >
                     <Text style={styles.freqHz}>{item.name}</Text>
                     <Text style={styles.brainwaveHz}>{item.hz}</Text>
@@ -211,7 +235,7 @@ export default function SelectionScreen() {
                       { borderColor: item.color },
                       selectedBrainwave === item.id && { backgroundColor: item.color + '20' },
                     ]}
-                    onPress={() => { setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
+                    onPress={() => { Haptics.selectionAsync(); setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
                   >
                     <Text style={styles.freqHz}>{item.name}</Text>
                     <Text style={styles.brainwaveHz}>{item.hz}</Text>
@@ -233,24 +257,27 @@ export default function SelectionScreen() {
           />
         )}
         </View>
-      </View>
 
-      <View style={styles.footer}>
-        <TouchableOpacity style={styles.mainButton} onPress={handleContinue}>
+        <TouchableOpacity style={styles.mainButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleContinue(); }}>
           <View style={styles.buttonContent}>
             <Text style={styles.buttonText}>continue</Text>
           </View>
         </TouchableOpacity>
       </View>
 
-      <Modal visible={showPlaylistModal} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
+      <Modal
+        visible={showPlaylistModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPlaylistModal(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowPlaylistModal(false)}>
           <Pressable style={styles.modalBox} onPress={() => {}}>
             <Text style={styles.modalTitle}>choose affirmation track</Text>
 
             <TouchableOpacity
               style={[styles.playlistRow, chosenPlaylistId === ALL_PLAYLIST_ID && styles.playlistRowSelected]}
-              onPress={() => handlePickPlaylist(ALL_PLAYLIST_ID)}
+              onPress={() => { Haptics.selectionAsync(); handlePickPlaylist(ALL_PLAYLIST_ID); }}
             >
               <Ionicons
                 name="musical-notes-outline"
@@ -276,7 +303,7 @@ export default function SelectionScreen() {
                 return (
                   <TouchableOpacity
                     style={[styles.playlistRow, isChosen && styles.playlistRowSelected]}
-                    onPress={() => handlePickPlaylist(item.id)}
+                    onPress={() => { Haptics.selectionAsync(); handlePickPlaylist(item.id); }}
                   >
                     <Ionicons
                       name="list-outline"
@@ -293,11 +320,11 @@ export default function SelectionScreen() {
               ItemSeparatorComponent={() => <View style={styles.separator} />}
             />
 
-            <TouchableOpacity style={styles.startBtn} onPress={handleStartWithPlaylist}>
-              <Text style={styles.startBtnText}>start</Text>
+            <TouchableOpacity style={styles.startBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleStartWithPlaylist(); }}>
+              <Text style={styles.startBtnText}>start manifesting</Text>
             </TouchableOpacity>
           </Pressable>
-        </View>
+        </Pressable>
       </Modal>
     </View>
   );
@@ -306,7 +333,7 @@ export default function SelectionScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: '#07041A',
     justifyContent: 'space-between',
   },
   header: {
@@ -322,11 +349,26 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 20,
-    justifyContent: 'space-evenly',
+  },
+  titleBlock: {
+    marginBottom: 20,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  titleTextBlock: {
+    flex: 1,
+  },
+  titleIcon: {
+    marginLeft: 12,
+    marginTop: 4,
+    opacity: 0.6,
   },
   mainTitle: {
-    fontFamily: Fonts.mono,
-    fontSize: 32,
+    fontFamily: Fonts.serif,
+    fontSize: 40,
     color: Colors.text,
     marginBottom: 8,
     lineHeight: 40,
@@ -357,9 +399,9 @@ const styles = StyleSheet.create({
   },
   freqHz: {
     fontFamily: Fonts.serifBold,
-    fontSize: 18,
+    fontSize: 24,
     color: Colors.text,
-    marginBottom: 4,
+    marginBottom: 2,
     textAlign: 'center',
   },
   freqLabel: {
@@ -377,6 +419,7 @@ const styles = StyleSheet.create({
   },
   freqGridContainer: {
     height: GRID_HEIGHT,
+    marginTop: 24,
   },
   bgScroll: {
     flexGrow: 0,
@@ -406,14 +449,11 @@ const styles = StyleSheet.create({
   bgTextSelected: {
     color: Colors.text,
   },
-  footer: {
-    padding: 20,
-    paddingBottom: 40,
-    backgroundColor: Colors.background,
-  },
   mainButton: {
     height: 56,
-    borderRadius: 28,
+    borderRadius: 15,
+    marginTop: 'auto',
+    marginBottom: 40,
     backgroundColor: '#FFFFFF',
     overflow: 'hidden',
   },
@@ -475,7 +515,7 @@ const styles = StyleSheet.create({
   startBtn: {
     marginTop: 20,
     height: 48,
-    borderRadius: 24,
+    borderRadius: 20,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',

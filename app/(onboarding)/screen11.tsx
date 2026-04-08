@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -17,6 +17,19 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
+
+const TYPEWRITER_MS = 33;
+const LETTER_FADE_MS = 480;
+const letterEnter = FadeIn.duration(LETTER_FADE_MS).easing(REasing.out(REasing.cubic));
+
+function FadeLetter({ ch, charStyle }: { ch: string; charStyle: object }) {
+  return (
+    <RAnimated.View entering={letterEnter}>
+      <Text style={charStyle}>{ch}</Text>
+    </RAnimated.View>
+  );
+}
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -45,7 +58,21 @@ export default function Screen11() {
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const [modalVisible, setModalVisible] = useState(false);
 
-  const fadeTitle = useRef(new Animated.Value(0)).current;
+  const TITLE = "affirmations are powerful";
+  const titleTokens = useMemo(() => [...TITLE].map((ch) => ({ ch })), []);
+  const titleWords = useMemo(() => {
+    const words: { chars: { ch: string }[]; startIdx: number }[] = [];
+    let i = 0;
+    while (i < titleTokens.length) {
+      const startIdx = i;
+      const wordChars: { ch: string }[] = [];
+      while (i < titleTokens.length && titleTokens[i].ch !== " ") wordChars.push(titleTokens[i++]);
+      while (i < titleTokens.length && titleTokens[i].ch === " ") wordChars.push(titleTokens[i++]);
+      if (wordChars.length > 0) words.push({ chars: wordChars, startIdx });
+    }
+    return words;
+  }, [titleTokens]);
+  const [titleVisible, setTitleVisible] = useState(0);
   const fadeCard = useRef(new Animated.Value(0)).current;
   const fadePill = useRef(new Animated.Value(0)).current;
   const fadeBtn = useRef(new Animated.Value(0)).current;
@@ -57,28 +84,34 @@ export default function Screen11() {
 
   useEffect(() => {
     fadeIn();
-    Animated.sequence([
-      Animated.timing(fadeTitle, {
-        toValue: 1,
-        duration: 550,
-        useNativeDriver: true,
-      }),
-      Animated.timing(fadeCard, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: true,
-      }),
-      Animated.timing(fadePill, {
-        toValue: 1,
-        duration: 450,
-        useNativeDriver: true,
-      }),
-      Animated.timing(fadeBtn, {
-        toValue: 1,
-        duration: 400,
-        useNativeDriver: true,
-      }),
-    ]).start();
+
+    setTitleVisible(0);
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const delayId = setTimeout(() => {
+      let i = 0;
+      intervalId = setInterval(() => {
+        i += 1;
+        if (i > titleTokens.length) {
+          clearInterval(intervalId!);
+          setTimeout(() => {
+            Animated.sequence([
+              Animated.timing(fadeCard, { toValue: 1, duration: 500, useNativeDriver: true }),
+              Animated.timing(fadePill, { toValue: 1, duration: 450, useNativeDriver: true }),
+              Animated.timing(fadeBtn, { toValue: 1, duration: 400, useNativeDriver: true }),
+            ]).start();
+          }, 150);
+          return;
+        }
+        const ch = titleTokens[i - 1]?.ch;
+        if (ch && ch !== " ") Haptics.selectionAsync();
+        setTitleVisible(i);
+      }, TYPEWRITER_MS);
+    }, 300);
+
+    return () => {
+      clearTimeout(delayId);
+      if (intervalId) clearInterval(intervalId);
+    };
   }, []);
 
   const openModal = async () => {
@@ -143,9 +176,21 @@ export default function Screen11() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.content}>
           {/* Title */}
-          <Animated.Text style={[styles.title, { opacity: fadeTitle }]}>
-            affirmations are powerful
-          </Animated.Text>
+          <View style={styles.titleSlot}>
+            <View style={styles.charRow}>
+              {titleWords.map((word, wIdx) => {
+                const charsVisible = Math.max(0, Math.min(word.chars.length, titleVisible - word.startIdx));
+                if (charsVisible === 0) return null;
+                return (
+                  <View key={wIdx} style={styles.wordRow}>
+                    {word.chars.slice(0, charsVisible).map((tok, cIdx) => (
+                      <FadeLetter key={`${word.startIdx}-${cIdx}`} ch={tok.ch} charStyle={styles.title} />
+                    ))}
+                  </View>
+                );
+              })}
+            </View>
+          </View>
 
           {/* Graph */}
           <Animated.Image
@@ -256,6 +301,9 @@ const styles = StyleSheet.create({
     gap: isSmallDevice ? 16 : 22,
     alignItems: "center",
   },
+  titleSlot: { alignSelf: "flex-start", width: "100%" },
+  charRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start" },
+  wordRow: { flexDirection: "row" },
   title: {
     fontSize: isSmallDevice ? 30 : 38,
     color: "#fff",

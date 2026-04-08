@@ -13,9 +13,16 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
-import Superwall from "@superwall/react-native-superwall";
+import * as SecureStore from "expo-secure-store";
+import Superwall, {
+  PaywallPresentationHandler,
+  PaywallSkippedReasonUserIsSubscribed,
+} from "@superwall/react-native-superwall";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+
+const ONBOARDING_KEY = "onboarding_completed";
+const SUBSCRIPTION_KEY = "subscription_active";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -24,22 +31,34 @@ const FADE_HEIGHT = 56;
 
 const TESTIMONIALS = [
   {
-    name: "Jacob Cullen",
-    image: "https://i.pravatar.cc/150?u=Jacob",
+    name: "Jacob C.",
     quote:
       "\u201cAfter two weeks of using my own voice for self-worth affirmations, I stopped second guessing every decision. It\u2019s like my inner critic finally got quiet, I feel lighter than I have in years.\u201d",
   },
   {
-    name: "Kervin Ngo",
-    image: "https://i.pravatar.cc/150?u=Kervin",
+    name: "Kervin N.",
     quote:
       "\u201cI was skeptical, but layering my abundance messages under 528 Hz while I work changed everything. Money started showing up in unexpected ways and I\u2019m no longer stressed about bills.\u201d",
   },
   {
-    name: "Renesmee Shin",
-    image: "https://i.pravatar.cc/150?u=Renesmee",
+    name: "Renesmee S.",
     quote:
       "\u201cNGL recording love affirmations in my voice felt weird at first, but now I catch myself smiling more around people. The loneliness is fading and I actually believe I\u2019m worthy of real connection.\u201d",
+  },
+  {
+    name: "Marcus T.",
+    quote:
+      "\u201cI play my confidence affirmations every morning before client calls. My close rate went up, my anxiety went down. Hearing my own voice say \u2018you\u2019re enough\u2019 actually lands differently than reading it.\u201d",
+  },
+  {
+    name: "Priya L.",
+    quote:
+      "\u201cStruggled with body image for years. Three weeks in and I genuinely catch myself being kinder in the mirror. It\u2019s not magic\u2014it\u2019s just me, finally believing the things I\u2019ve always wanted to believe.\u201d",
+  },
+  {
+    name: "Dante R.",
+    quote:
+      "\u201cI\u2019ve tried journaling, therapy apps, meditation. Nothing stuck like this. There\u2019s something about your own voice that bypasses all the resistance. Wu-Wu is the only habit I\u2019ve kept for more than a month.\u201d",
   },
 ];
 
@@ -51,6 +70,9 @@ export default function Screen21() {
   const [isHandled, setIsHandled] = useState(false);
 
   useEffect(() => {
+    // Mark onboarding as seen — app will return here on next launch until subscribed
+    void SecureStore.setItemAsync(ONBOARDING_KEY, "true");
+
     fadeIn();
     Animated.stagger(200, [
       Animated.timing(headerAnim, {
@@ -72,28 +94,38 @@ export default function Screen21() {
 
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    // Start paywall — resolves on subscribe, decline, or transaction_fail
-    const paywallPromise = Superwall.shared.register({
-      placement: "campaign_trigger",
+    const handler = new PaywallPresentationHandler();
+
+    handler.onDismiss((_info, result) => {
+      if (result.type === "purchased" || result.type === "restored") {
+        void SecureStore.setItemAsync(SUBSCRIPTION_KEY, "true");
+        router.replace("/(tabs)" as any);
+      } else {
+        // declined or transaction abandoned — hard paywall: let them retry
+        setIsHandled(false);
+      }
     });
 
-    // Navigate to main app 500ms after paywall starts presenting,
-    // so tabs are ready whether user subscribes or dismisses
-    setTimeout(() => {
-      try {
-        if (router.canDismiss()) router.dismissAll();
+    handler.onSkip((reason) => {
+      if (reason instanceof PaywallSkippedReasonUserIsSubscribed) {
+        // Already subscribed — go straight to tabs
+        void SecureStore.setItemAsync(SUBSCRIPTION_KEY, "true");
         router.replace("/(tabs)" as any);
-      } catch (e) {
-        console.error("[Screen21] Navigation error:", e);
-        router.push("/(tabs)" as any);
+      } else {
+        // Holdout / no audience / placement not found — reset for retry
+        setIsHandled(false);
       }
-    }, 500);
+    });
 
-    // Await completion (subscribe / paywall_decline / transaction_fail all resolve here)
+    handler.onError((_error) => {
+      setIsHandled(false);
+    });
+
     try {
-      await paywallPromise;
+      await Superwall.shared.register({ placement: "campaign_trigger", handler });
     } catch (e) {
       console.log("[Screen21] Paywall register error:", e);
+      setIsHandled(false);
     }
   };
 
@@ -107,16 +139,11 @@ export default function Screen21() {
           </Text>
           <Text style={styles.subtitle}>reviews from people using Wu-Wu.</Text>
 
-          {/* Wreath + stars */}
+          {/* Wreath */}
           <View style={styles.wreathSection}>
             <Image
               source={require("@/assets/images/onboarding/wreath.png")}
               style={styles.wreathImage}
-              resizeMode="contain"
-            />
-            <Image
-              source={require("@/assets/images/onboarding/fivestar.png")}
-              style={styles.starsImage}
               resizeMode="contain"
             />
           </View>
@@ -131,15 +158,12 @@ export default function Screen21() {
             {TESTIMONIALS.map((t, i) => (
               <View key={i} style={styles.card}>
                 <View style={styles.cardHeader}>
-                  <Image source={{ uri: t.image }} style={styles.avatar} />
-                  <View style={styles.nameRow}>
-                    <Text style={styles.name}>{t.name}</Text>
-                    <Image
-                      source={require("@/assets/images/onboarding/fivestar.png")}
-                      style={styles.cardStars}
-                      resizeMode="contain"
-                    />
-                  </View>
+                  <Text style={styles.name}>{t.name}</Text>
+                  <Image
+                    source={require("@/assets/images/onboarding/fivestar.png")}
+                    style={styles.cardStars}
+                    resizeMode="contain"
+                  />
                 </View>
                 <Text style={styles.quote}>{t.quote}</Text>
               </View>
@@ -169,6 +193,16 @@ export default function Screen21() {
           >
             <Text style={styles.joinText}>join Wu-Wu 🙏</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            onPress={async () => {
+              await SecureStore.deleteItemAsync(ONBOARDING_KEY);
+              router.replace("/(onboarding)/screen1" as any);
+            }}
+            activeOpacity={0.6}
+            style={styles.restartButton}
+          >
+            <Text style={styles.restartText}>restart onboarding</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     </Animated.View>
@@ -196,22 +230,18 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.5)",
     fontFamily: Fonts.mono,
     letterSpacing: 0.2,
-    marginBottom: 16,
+    marginBottom: -30,
   },
 
   wreathSection: {
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 8,
+    marginBottom: -50,
+    backgroundColor: "transparent",
   },
   wreathImage: {
-    width: isSmallDevice ? 200 : 240,
-    height: isSmallDevice ? 80 : 96,
-  },
-  starsImage: {
-    position: "absolute",
-    width: isSmallDevice ? 120 : 140,
-    height: isSmallDevice ? 28 : 32,
+    width: isSmallDevice ? 200 : 340,
+    height: isSmallDevice ? 80 : 190,
   },
 
   listWrapper: {
@@ -250,30 +280,18 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 10,
-    gap: 12,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#333",
-  },
-  nameRow: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: 10,
   },
   name: {
-    fontSize: isSmallDevice ? 15 : 17,
+    fontSize: isSmallDevice ? 18 : 21,
     color: "#fff",
     fontFamily: Fonts.serif,
     fontWeight: "700",
   },
   cardStars: {
-    width: 80,
-    height: 16,
+    width: 110,
+    height: 22,
   },
   quote: {
     fontSize: isSmallDevice ? 13 : 14,
@@ -299,5 +317,16 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.mono,
     color: "#000",
     letterSpacing: 0.3,
+  },
+  restartButton: {
+    alignItems: "center",
+    paddingVertical: 12,
+    marginTop: 4,
+  },
+  restartText: {
+    fontSize: 13,
+    fontFamily: Fonts.mono,
+    color: "rgba(255,255,255,0.35)",
+    letterSpacing: 0.2,
   },
 });

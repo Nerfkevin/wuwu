@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -17,6 +17,20 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
+
+const TYPEWRITER_MS = 50;
+const LETTER_FADE_MS = 480;
+
+const letterEnter = FadeIn.duration(LETTER_FADE_MS).easing(REasing.out(REasing.cubic));
+
+function FadeLetter({ ch, charStyle }: { ch: string; charStyle: object }) {
+  return (
+    <RAnimated.View entering={letterEnter}>
+      <Text style={charStyle}>{ch}</Text>
+    </RAnimated.View>
+  );
+}
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -74,42 +88,82 @@ const SLIDES = [
 function TextSlide({
   item,
   isActive,
+  onWordComplete,
 }: {
   item: (typeof SLIDES)[0];
   isActive: boolean;
+  onWordComplete: () => void;
 }) {
-  const fadeText = useRef(new Animated.Value(isActive ? 1 : 0)).current;
+  const fadeLabel = useRef(new Animated.Value(isActive ? 1 : 0)).current;
+  const quoteOpacity = useRef(new Animated.Value(0)).current;
+  const wordTokens = useMemo(() => [...item.word].map((ch) => ({ ch })), [item.word]);
+  const [visibleCount, setVisibleCount] = useState(0);
 
   useEffect(() => {
-    if (isActive) {
-      fadeText.setValue(0);
-      const anim = Animated.timing(fadeText, {
-        toValue: 1,
-        duration: 480,
-        useNativeDriver: true,
-      });
-      anim.start();
-      return () => anim.stop();
-    }
+    if (!isActive) return;
+
+    fadeLabel.setValue(0);
+    quoteOpacity.setValue(0);
+    setVisibleCount(0);
+
+    const labelAnim = Animated.timing(fadeLabel, {
+      toValue: 1,
+      duration: 480,
+      useNativeDriver: true,
+    });
+    labelAnim.start();
+
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const delayId = setTimeout(() => {
+      let i = 0;
+      intervalId = setInterval(() => {
+        i += 1;
+        if (i > wordTokens.length) {
+          clearInterval(intervalId!);
+          onWordComplete();
+          setTimeout(() => {
+            Animated.timing(quoteOpacity, {
+              toValue: 1,
+              duration: 500,
+              useNativeDriver: true,
+            }).start();
+          }, 150);
+          return;
+        }
+        const ch = wordTokens[i - 1]?.ch;
+        if (ch && ch !== " ") Haptics.selectionAsync();
+        setVisibleCount(i);
+      }, TYPEWRITER_MS);
+    }, 300);
+
+    return () => {
+      labelAnim.stop();
+      clearTimeout(delayId);
+      if (intervalId) clearInterval(intervalId);
+    };
   }, [isActive]);
 
   return (
     <View style={[text.container, { width }]}>
-      <Animated.View style={{ opacity: fadeText }}>
-        <Text style={text.label}>{item.label}</Text>
-        <Text style={text.word}>{item.word}</Text>
+      <Animated.Text style={[text.label, { opacity: fadeLabel }]}>
+        {item.label}
+      </Animated.Text>
+      <View style={text.wordRow}>
+        {wordTokens.slice(0, visibleCount).map((tok, i) => (
+          <FadeLetter key={i} ch={tok.ch} charStyle={text.word} />
+        ))}
+      </View>
 
-        {/* translucent quote box */}
-        <View style={text.quoteBox}>
-          <Text style={text.quote}>{item.quote}</Text>
-          <TouchableOpacity
-            onPress={() => WebBrowser.openBrowserAsync(item.link)}
-            activeOpacity={0.7}
-          >
-            <Text style={text.author}>{item.author}</Text>
-            <Text style={text.journal}>{item.journal}</Text>
-          </TouchableOpacity>
-        </View>
+      {/* translucent quote box — fades in after typewriter finishes */}
+      <Animated.View style={[text.quoteBox, { opacity: quoteOpacity }]}>
+        <Text style={text.quote}>{item.quote}</Text>
+        <TouchableOpacity
+          onPress={() => WebBrowser.openBrowserAsync(item.link)}
+          activeOpacity={0.7}
+        >
+          <Text style={text.author}>{item.author}</Text>
+          <Text style={text.journal}>{item.journal}</Text>
+        </TouchableOpacity>
       </Animated.View>
     </View>
   );
@@ -127,13 +181,18 @@ const text = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 2,
   },
+  wordRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    flexWrap: "wrap",
+    marginBottom: 34,
+    minHeight: isSmallDevice ? 46 : 56,
+  },
   word: {
     fontSize: isSmallDevice ? 42 : 52,
     color: "#fff",
     fontFamily: Fonts.serif,
     lineHeight: isSmallDevice ? 46 : 56,
-    marginBottom: 34,
-    textAlign: "center",
   },
   quoteBox: {
     backgroundColor: "rgba(255,255,255,0.08)",
@@ -211,6 +270,8 @@ export default function Screen10() {
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const listRef = useRef<FlatList>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [titleDone, setTitleDone] = useState(false);
+  const fadeBtn = useRef(new Animated.Value(0)).current;
 
   const dotAnims = useRef(
     SLIDES.map((_, i) => new Animated.Value(i === 0 ? 1 : 0.25))
@@ -223,6 +284,28 @@ export default function Screen10() {
   useEffect(() => {
     fadeIn();
   }, []);
+
+  useEffect(() => {
+    setTitleDone(false);
+    fadeBtn.setValue(0);
+  }, [activeIndex]);
+
+  useEffect(() => {
+    Animated.timing(fadeBtn, {
+      toValue: titleDone ? 1 : 0,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  }, [titleDone]);
+
+  const buttonBg = fadeBtn.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["rgba(255,255,255,0.18)", "rgba(255,255,255,1)"],
+  });
+  const buttonTextColor = fadeBtn.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["rgba(255,255,255,0.35)", "rgba(26,0,0,1)"],
+  });
 
   useEffect(() => {
     // Animate dots
@@ -239,7 +322,7 @@ export default function Screen10() {
       imgOpacities.map((anim, i) =>
         Animated.timing(anim, {
           toValue: i === activeIndex ? 1 : 0,
-          duration: 400,
+          duration: 700,
           useNativeDriver: true,
         })
       )
@@ -308,7 +391,11 @@ export default function Screen10() {
           scrollEventThrottle={16}
           onMomentumScrollEnd={handleScroll}
           renderItem={({ item, index }) => (
-            <TextSlide item={item} isActive={index === activeIndex} />
+            <TextSlide
+              item={item}
+              isActive={index === activeIndex}
+              onWordComplete={() => setTitleDone(true)}
+            />
           )}
           style={styles.list}
         />
@@ -317,11 +404,15 @@ export default function Screen10() {
       {/* Continue button — sticky footer */}
       <SafeAreaView edges={["bottom"]} style={styles.footer}>
         <TouchableOpacity
-          style={styles.btn}
-          onPress={handleContinue}
-          activeOpacity={0.85}
+          onPress={titleDone ? handleContinue : undefined}
+          activeOpacity={titleDone ? 0.85 : 1}
+          disabled={!titleDone}
         >
-          <Text style={styles.btnText}>continue</Text>
+          <Animated.View style={[styles.btn, { backgroundColor: buttonBg }]}>
+            <Animated.Text style={[styles.btnText, { color: buttonTextColor }]}>
+              continue
+            </Animated.Text>
+          </Animated.View>
         </TouchableOpacity>
       </SafeAreaView>
     </Animated.View>
@@ -347,13 +438,11 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   btn: {
-    backgroundColor: "#fff",
     borderRadius: 20,
     paddingVertical: isSmallDevice ? 15 : 18,
     alignItems: "center",
   },
   btnText: {
-    color: "#1a0000",
     fontSize: 17,
     fontFamily: Fonts.mono,
     fontWeight: "700",

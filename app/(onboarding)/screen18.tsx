@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Dimensions,
   TouchableOpacity,
 } from "react-native";
+import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -16,6 +17,49 @@ import { useOnboardingNav } from "./use-onboarding-nav";
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
 
+const TYPEWRITER_MS = 33;
+const LETTER_FADE_MS = 480;
+const SLIDE_DELAY_MS = 300;
+
+type CharToken = { ch: string };
+type WordToken = { chars: CharToken[]; startIdx: number };
+
+function stringToCharTokens(s: string): CharToken[] {
+  return [...s].map((ch) => ({ ch }));
+}
+
+function charsToWordTokens(chars: CharToken[]): WordToken[] {
+  const words: WordToken[] = [];
+  let i = 0;
+  while (i < chars.length) {
+    const startIdx = i;
+    if (chars[i].ch === "\n") {
+      words.push({ chars: [{ ch: "\n" }], startIdx });
+      i += 1;
+      continue;
+    }
+    const wordChars: CharToken[] = [];
+    while (i < chars.length && chars[i].ch !== " " && chars[i].ch !== "\n") {
+      wordChars.push(chars[i++]);
+    }
+    while (i < chars.length && chars[i].ch === " ") {
+      wordChars.push(chars[i++]);
+    }
+    if (wordChars.length > 0) words.push({ chars: wordChars, startIdx });
+  }
+  return words;
+}
+
+const letterEnter = FadeIn.duration(LETTER_FADE_MS).easing(REasing.out(REasing.cubic));
+
+function FadeLetter({ ch, charStyle }: { ch: string; charStyle: object }) {
+  return (
+    <RAnimated.View entering={letterEnter}>
+      <Text style={charStyle}>{ch}</Text>
+    </RAnimated.View>
+  );
+}
+
 const OPTIONS = [
   { emoji: "😎", label: "extremely committed" },
   { emoji: "💪", label: "very committed" },
@@ -24,14 +68,68 @@ const OPTIONS = [
   { emoji: "⭐", label: "just trying it out" },
 ];
 
+const QUESTION = "how committed are you\nto manifesting your\ndream life?";
+
 export default function Screen18() {
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const [selected, setSelected] = useState<string | null>(null);
   const fadeContinue = useRef(new Animated.Value(0)).current;
+  const fadeOptions = useRef(new Animated.Value(0)).current;
+  const fadePre = useRef(new Animated.Value(0)).current;
+
+  const questionTokens = useMemo(() => stringToCharTokens(QUESTION), []);
+  const questionWords = useMemo(() => charsToWordTokens(questionTokens), [questionTokens]);
+  const [visibleCount, setVisibleCount] = useState(0);
+  const [titleDone, setTitleDone] = useState(false);
+
+  const qLineH = isSmallDevice ? 36 : 44;
+  const charStyle = { fontSize: isSmallDevice ? 26 : 32, color: "#fff", fontFamily: Fonts.serif, lineHeight: qLineH };
 
   useEffect(() => {
     fadeIn();
+
+    // fade in "so," immediately
+    Animated.timing(fadePre, {
+      toValue: 1,
+      duration: 400,
+      useNativeDriver: true,
+    }).start();
+
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const delayId = setTimeout(() => {
+      let i = 0;
+      intervalId = setInterval(() => {
+        i += 1;
+        if (i > questionTokens.length) {
+          clearInterval(intervalId!);
+          setTitleDone(true);
+          return;
+        }
+        const ch = questionTokens[i - 1]?.ch;
+        if (ch && ch !== " " && ch !== "\n") {
+          Haptics.selectionAsync();
+        }
+        setVisibleCount(i);
+      }, TYPEWRITER_MS);
+    }, SLIDE_DELAY_MS);
+
+    return () => {
+      clearTimeout(delayId);
+      if (intervalId) clearInterval(intervalId);
+    };
   }, []);
+
+  useEffect(() => {
+    if (!titleDone) return;
+    const t = setTimeout(() => {
+      Animated.timing(fadeOptions, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }).start();
+    }, 200);
+    return () => clearTimeout(t);
+  }, [titleDone]);
 
   useEffect(() => {
     Animated.timing(fadeContinue, {
@@ -68,13 +166,38 @@ export default function Screen18() {
       <SafeAreaView style={styles.safeArea}>
 
         <View style={styles.topSection}>
-          <Text style={styles.pre}>so,</Text>
-          <Text style={styles.question}>
-            how committed are you{"\n"}to manifesting your{"\n"}most abundant self?
-          </Text>
+          <Animated.Text style={[styles.pre, { opacity: fadePre }]}>so,</Animated.Text>
+          <View style={[styles.questionSlot, { minHeight: qLineH * 3 }]}>
+            <View style={styles.charRow}>
+              {questionWords.map((word, wIdx) => {
+                const charsVisible = Math.max(
+                  0,
+                  Math.min(word.chars.length, visibleCount - word.startIdx)
+                );
+                if (charsVisible === 0) return null;
+                if (word.chars.length === 1 && word.chars[0].ch === "\n") {
+                  return <View key={wIdx} style={styles.lineBreak} />;
+                }
+                return (
+                  <View key={wIdx} style={styles.wordRow}>
+                    {word.chars.slice(0, charsVisible).map((t, cIdx) => (
+                      <FadeLetter
+                        key={`${word.startIdx}-${cIdx}`}
+                        ch={t.ch}
+                        charStyle={charStyle}
+                      />
+                    ))}
+                  </View>
+                );
+              })}
+            </View>
+          </View>
         </View>
 
-        <View style={styles.optionsArea}>
+        <Animated.View
+          style={[styles.optionsArea, { opacity: fadeOptions }]}
+          pointerEvents={titleDone ? "auto" : "none"}
+        >
           {OPTIONS.map((opt) => {
             const isSel = selected === opt.label;
             return (
@@ -90,7 +213,7 @@ export default function Screen18() {
               </TouchableOpacity>
             );
           })}
-        </View>
+        </Animated.View>
 
         <View style={styles.footer}>
           <TouchableOpacity
@@ -126,11 +249,22 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.mono,
     letterSpacing: 0.2,
   },
-  question: {
-    fontSize: isSmallDevice ? 26 : 32,
-    color: "#fff",
-    fontFamily: Fonts.serif,
-    lineHeight: isSmallDevice ? 36 : 44,
+  questionSlot: {
+    width: "100%",
+    justifyContent: "flex-start",
+  },
+  charRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+    width: "100%",
+  },
+  wordRow: {
+    flexDirection: "row",
+  },
+  lineBreak: {
+    width: "100%",
+    height: 0,
   },
 
   optionsArea: {
@@ -142,7 +276,7 @@ const styles = StyleSheet.create({
   option: {
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.25)",
-    borderRadius: 50,
+    borderRadius: 15,
     paddingVertical: isSmallDevice ? 13 : 15,
     alignItems: "center",
   },

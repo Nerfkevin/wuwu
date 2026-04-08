@@ -1,7 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Background from 'react-native-ambient-background';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
+import { recordPlaybackSession } from '@/lib/profile-stats';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -35,6 +38,8 @@ const triggerHaptic = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Ligh
 
 export default function PlaybackScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
+  const statsRecordedRef = useRef(false);
   const { text, freq, bg, brainwave, color } = useLocalSearchParams<{
     text?: string; freq?: string; bg?: string; brainwave?: string; color?: string;
   }>();
@@ -70,6 +75,17 @@ export default function PlaybackScreen() {
     shouldPlayBrainwave,
     shouldPlayPure,
   });
+
+  useEffect(() => {
+    statsRecordedRef.current = false;
+    const unsub = navigation.addListener('beforeRemove', () => {
+      const ms = stopSession();
+      if (statsRecordedRef.current) return;
+      statsRecordedRef.current = true;
+      if (ms > 0) void recordPlaybackSession(ms);
+    });
+    return unsub;
+  }, [navigation, stopSession]);
 
   // ─── Message display ──────────────────────────────────────────────────────
   const hasTrackMessage = recordings.length > 0 && !!recordings[currentTrackIndex]?.text;
@@ -192,10 +208,10 @@ export default function PlaybackScreen() {
 
   // ─── Derived display values ───────────────────────────────────────────────
   const totalMessages = recordings.length;
-  const progressPercent =
-    totalMessages <= 1 ? (totalMessages === 1 ? 100 : 0) : (currentTrackIndex / (totalMessages - 1)) * 100;
   const progressLabel =
-    totalMessages > 0 ? `${Math.min(currentTrackIndex + 1, totalMessages)}/${totalMessages}` : '0/0';
+    totalMessages > 0
+      ? `${Math.min(currentTrackIndex + 1, totalMessages)}/${totalMessages}/${completedSetCount + 1}`
+      : '0/0/1';
   const totalElapsedSec = Math.floor(sessionElapsedMs / 1000);
   const sessionTimerLabel = `${String(Math.floor(totalElapsedSec / 60)).padStart(2, '0')}:${String(totalElapsedSec % 60).padStart(2, '0')}`;
   const volumeLabel = volume <= 1 ? 'Subliminal' : `${volume}%`;
@@ -204,8 +220,7 @@ export default function PlaybackScreen() {
   const oscIconColor = !isOscMuted ? selectedColor : Colors.textSecondary;
   const oscIconName = !isOscMuted ? 'volume-high' : 'volume-mute';
 
-  const handleFinish = async () => {
-    stopSession();
+  const handleFinish = () => {
     router.back();
   };
 
@@ -213,54 +228,83 @@ export default function PlaybackScreen() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={styles.container}>
-        <LinearGradient
-          colors={[Colors.background, '#1A0B2E', Colors.background]}
-          locations={[0, 0.4, 1]}
-          style={StyleSheet.absoluteFill}
+        <Background
+          variant="fluid"
+          mainColor="#0a000d"
+          speed={0.2}
+          style={StyleSheet.absoluteFillObject}
         />
         <SafeAreaView
-          style={[styles.safeArea, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 24 }]}
+          style={[styles.safeArea, { paddingTop: insets.top + 6, paddingBottom: insets.bottom + 24 }]}
           edges={[]}
         >
-          {/* Progress bar */}
-          <View style={styles.topProgressContainer}>
-            <View style={[styles.topProgressBar, { width: `${progressPercent}%` }]} />
+          <View style={styles.brandTitleWrap}>
+            <Text style={styles.brandTitle}>Wu-Wu</Text>
           </View>
 
-          {/* Header */}
           <View style={styles.header}>
-            <View>
-              <Text style={styles.headerLabel}>Affirmation</Text>
-              <Text style={styles.headerValue}>{progressLabel}</Text>
+            <View style={styles.headerTopRow}>
+              <View style={styles.headerLeftCol}>
+                <LinearGradient
+                  colors={[
+                    'rgba(200, 200, 205, 0)',
+                    'rgba(200, 200, 205, 0.35)',
+                    'rgba(220, 220, 225, 0.85)',
+                    'rgba(200, 200, 205, 0.35)',
+                    'rgba(200, 200, 205, 0)',
+                  ]}
+                  locations={[0, 0.22, 0.5, 0.78, 1]}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={[styles.headerTaperLine, styles.headerTaperLineLeft]}
+                />
+                <Text style={styles.headerLabel}>Affirmation</Text>
+                <Text style={styles.headerValue}>{progressLabel}</Text>
+              </View>
+              <View style={styles.headerRight}>
+                <View style={styles.headerRightInner}>
+                  <LinearGradient
+                    colors={[
+                      'rgba(200, 200, 205, 0)',
+                      'rgba(200, 200, 205, 0.35)',
+                      'rgba(220, 220, 225, 0.85)',
+                      'rgba(200, 200, 205, 0.35)',
+                      'rgba(200, 200, 205, 0)',
+                    ]}
+                    locations={[0, 0.22, 0.5, 0.78, 1]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={[styles.headerTaperLine, styles.headerTaperLineRight]}
+                  />
+                  {shouldPlayBrainwave ? (
+                    <Pressable style={styles.soundToggle} onPress={toggleOscMute}>
+                      <Ionicons name={oscIconName} size={16} color={oscIconColor} />
+                      <Text style={[styles.headerLabel, { color: oscIconColor }]}>
+                        {BINAURAL_BEATS[selectedBrainwave] ?? BINAURAL_BEATS.alpha} Hz
+                      </Text>
+                    </Pressable>
+                  ) : shouldPlayPure ? (
+                    <Pressable style={styles.soundToggle} onPress={toggleOscMute}>
+                      <Ionicons name={oscIconName} size={16} color={oscIconColor} />
+                      <Text style={[styles.headerLabel, { color: oscIconColor }]}>{selectedFrequency} Hz</Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable style={styles.soundToggle} onPress={toggleBowlMute}>
+                      <Ionicons name={bowlIconName} size={16} color={bowlIconColor} />
+                      <Text style={[styles.headerLabel, { color: bowlIconColor }]}>{selectedFrequency} Hz</Text>
+                    </Pressable>
+                  )}
+                  <Text style={styles.headerValue}>
+                    {shouldPlayBrainwave
+                      ? (BRAINWAVE_LABELS[selectedBrainwave] ?? selectedBrainwave)
+                      : shouldPlayPure
+                      ? 'Pure'
+                      : selectedBackground}
+                  </Text>
+                </View>
+              </View>
             </View>
-            <View style={styles.headerRight}>
-              {shouldPlayBrainwave ? (
-                <>
-                  <Pressable style={styles.soundToggle} onPress={toggleOscMute}>
-                    <Ionicons name={oscIconName} size={16} color={oscIconColor} />
-                    <Text style={[styles.headerLabel, { color: oscIconColor }]}>
-                      {BINAURAL_BEATS[selectedBrainwave] ?? BINAURAL_BEATS.alpha} Hz
-                    </Text>
-                  </Pressable>
-                  <Text style={styles.headerValue}>{BRAINWAVE_LABELS[selectedBrainwave] ?? selectedBrainwave}</Text>
-                </>
-              ) : shouldPlayPure ? (
-                <>
-                  <Pressable style={styles.soundToggle} onPress={toggleOscMute}>
-                    <Ionicons name={oscIconName} size={16} color={oscIconColor} />
-                    <Text style={[styles.headerLabel, { color: oscIconColor }]}>{selectedFrequency} Hz</Text>
-                  </Pressable>
-                  <Text style={styles.headerValue}>Pure</Text>
-                </>
-              ) : (
-                <>
-                  <Pressable style={styles.soundToggle} onPress={toggleBowlMute}>
-                    <Ionicons name={bowlIconName} size={16} color={bowlIconColor} />
-                    <Text style={[styles.headerLabel, { color: bowlIconColor }]}>{selectedFrequency} Hz</Text>
-                  </Pressable>
-                  <Text style={styles.headerValue}>{selectedBackground}</Text>
-                </>
-              )}
+            <View style={styles.headerRowEnd}>
               <Pressable
                 style={styles.ambientButton}
                 onPress={() => setShowAmbientModal(true)}
@@ -273,7 +317,6 @@ export default function PlaybackScreen() {
 
           {/* Main content */}
           <View style={styles.contentContainer}>
-            <Text style={styles.setLabel}>Set {completedSetCount + 1}</Text>
             <View style={styles.cardGlowWrapper}>
               <AnimatedGlow preset={cardGlowPreset} activeState={cardGlowState}>
                 <AffirmationCard
@@ -358,25 +401,44 @@ export default function PlaybackScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  safeArea: { flex: 1, paddingHorizontal: 24 },
-  topProgressContainer: {
-    width: '100%',
-    height: 4,
-    backgroundColor: '#333',
-    borderRadius: 2,
-    marginTop: 10,
+  safeArea: { flex: 1, paddingHorizontal: 24, justifyContent: 'space-between' },
+  brandTitleWrap: { alignItems: 'center', marginTop: 2, marginBottom: 2 },
+  brandTitle: {
+    fontFamily: Fonts.serif,
+    fontSize: 26,
+    color: Colors.text,
+    letterSpacing: 0.5,
   },
-  topProgressBar: { height: '100%', backgroundColor: Colors.chakra.orange, borderRadius: 2 },
+  headerTaperLine: {
+    width: 96,
+    height: 2,
+    marginBottom: 8,
+    borderRadius: 1,
+  },
+  headerTaperLineLeft: { alignSelf: 'flex-start' },
+  headerTaperLineRight: { alignSelf: 'flex-end' },
   header: {
+    flexDirection: 'column',
+    marginTop: 6,
+    marginBottom: 10,
+    gap: 4,
+  },
+  headerTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 20,
-    marginBottom: 10,
+    alignItems: 'flex-start',
   },
-  headerLabel: { fontFamily: Fonts.mono, fontSize: 12, color: Colors.textSecondary, marginBottom: 4 },
+  headerLeftCol: { flex: 1, minWidth: 0, alignItems: 'flex-start' },
+  headerRowEnd: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 4,
+  },
+  headerLabel: { fontFamily: Fonts.mono, fontSize: 12, color: Colors.textSecondary },
   headerValue: { fontFamily: Fonts.mono, fontSize: 14, color: Colors.text },
-  headerRight: { alignItems: 'flex-end', gap: 6 },
-  soundToggle: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  headerRight: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
+  headerRightInner: { alignItems: 'flex-end', gap: 6 },
+  soundToggle: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   ambientButton: {
     width: 26,
     height: 26,
@@ -418,7 +480,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   timerText: { fontFamily: Fonts.mono, fontSize: 14, color: Colors.text, marginTop: 4 },
-  footer: { width: '100%', gap: 20, alignItems: 'center', marginBottom: 10 },
+  footer: { width: '100%', gap: 30, alignItems: 'center', marginBottom: -20 },
   finishText: { fontFamily: Fonts.mono, fontSize: 14, color: Colors.textSecondary, fontWeight: '500' },
   volumeContainer: {
     flexDirection: 'row',
@@ -426,10 +488,10 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: 10,
   },
-  sliderContainer: { flex: 1, height: 44 },
+  sliderContainer: { flex: 1, height: 50 },
   pillTrack: {
     flex: 1,
-    height: 44,
+    height: 50,
     borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.10)',
     overflow: 'hidden',
@@ -450,7 +512,7 @@ const styles = StyleSheet.create({
   },
   pillLabelWhite: {
     fontFamily: Fonts.mono,
-    fontSize: 11,
+    fontSize: 12,
     color: '#fff',
     letterSpacing: 0.4,
   },
@@ -468,7 +530,7 @@ const styles = StyleSheet.create({
   },
   pillLabelBlack: {
     fontFamily: Fonts.mono,
-    fontSize: 11,
+    fontSize: 12,
     color: '#000',
     letterSpacing: 0.4,
   },

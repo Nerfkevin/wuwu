@@ -12,6 +12,7 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
 } from "react-native";
+import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import * as SecureStore from "expo-secure-store";
@@ -21,26 +22,112 @@ import { useOnboardingNav } from "./use-onboarding-nav";
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
 
+const QUESTION = "what should we call you?";
+
+const TYPEWRITER_MS = 33;
+const LETTER_FADE_MS = 480;
+
+type CharToken = { ch: string };
+type WordToken = { chars: CharToken[]; startIdx: number };
+
+function stringToCharTokens(s: string): CharToken[] {
+  return [...s].map((ch) => ({ ch }));
+}
+
+function charsToWordTokens(chars: CharToken[]): WordToken[] {
+  const words: WordToken[] = [];
+  let i = 0;
+  while (i < chars.length) {
+    const startIdx = i;
+    const wordChars: CharToken[] = [];
+    while (i < chars.length && chars[i].ch !== " ") {
+      wordChars.push(chars[i++]);
+    }
+    while (i < chars.length && chars[i].ch === " ") {
+      wordChars.push(chars[i++]);
+    }
+    if (wordChars.length > 0) words.push({ chars: wordChars, startIdx });
+  }
+  return words;
+}
+
+const enterAnim = FadeIn.duration(LETTER_FADE_MS).easing(
+  REasing.out(REasing.cubic)
+);
+
+function FadeLetter({ ch, charStyle }: { ch: string; charStyle: object }) {
+  return (
+    <RAnimated.View entering={enterAnim}>
+      <Text style={charStyle}>{ch}</Text>
+    </RAnimated.View>
+  );
+}
+
 export default function Screen3() {
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const [name, setName] = useState("");
   const inputRef = useRef<TextInput>(null);
 
+  const questionTokens = useRef(stringToCharTokens(QUESTION)).current;
+  const questionWords = useRef(charsToWordTokens(questionTokens)).current;
+
+  const [labelDone, setLabelDone] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(0);
+  const [typewriterDone, setTypewriterDone] = useState(false);
+
   const fadeContinue = useRef(new Animated.Value(0)).current;
   const fadeLabel = useRef(new Animated.Value(0)).current;
-  const fadeQuestion = useRef(new Animated.Value(0)).current;
   const fadeInput = useRef(new Animated.Value(0)).current;
+  const fadeFooter = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     fadeIn();
-    const anim = Animated.stagger(120, [
-      Animated.timing(fadeLabel, { toValue: 1, duration: 500, useNativeDriver: true }),
-      Animated.timing(fadeQuestion, { toValue: 1, duration: 600, useNativeDriver: true }),
-      Animated.timing(fadeInput, { toValue: 1, duration: 500, useNativeDriver: true }),
-    ]);
-    anim.start();
-    return () => anim.stop();
+    Animated.timing(fadeLabel, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) setLabelDone(true);
+    });
   }, []);
+
+  useEffect(() => {
+    if (!labelDone) return;
+    setVisibleCount(0);
+    let i = 0;
+    const id = setInterval(() => {
+      i += 1;
+      if (i > questionTokens.length) {
+        clearInterval(id);
+        setTypewriterDone(true);
+        return;
+      }
+      const ch = questionTokens[i - 1]?.ch;
+      if (ch && !/\s/.test(ch)) {
+        Haptics.selectionAsync();
+      }
+      setVisibleCount(i);
+    }, TYPEWRITER_MS);
+    return () => clearInterval(id);
+  }, [labelDone, questionTokens]);
+
+  useEffect(() => {
+    if (!typewriterDone) return;
+    Animated.parallel([
+      Animated.timing(fadeInput, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeFooter, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      inputRef.current?.focus();
+    });
+  }, [typewriterDone]);
 
   useEffect(() => {
     Animated.timing(fadeContinue, {
@@ -68,6 +155,8 @@ export default function Screen3() {
     navigateTo("/(onboarding)/screen4");
   };
 
+  const charTextStyle = styles.charText;
+
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <Animated.View style={[styles.container, { opacity: contentOpacity }]}>
@@ -82,9 +171,26 @@ export default function Screen3() {
                 first things first
               </Animated.Text>
 
-              <Animated.Text style={[styles.question, { opacity: fadeQuestion }]}>
-                what should we call you?
-              </Animated.Text>
+              <View style={styles.charRow}>
+                {questionWords.map((word, wIdx) => {
+                  const charsVisible = Math.max(
+                    0,
+                    Math.min(word.chars.length, visibleCount - word.startIdx)
+                  );
+                  if (charsVisible === 0) return null;
+                  return (
+                    <View key={wIdx} style={styles.wordRow}>
+                      {word.chars.slice(0, charsVisible).map((t, cIdx) => (
+                        <FadeLetter
+                          key={`${word.startIdx}-${cIdx}`}
+                          ch={t.ch}
+                          charStyle={charTextStyle}
+                        />
+                      ))}
+                    </View>
+                  );
+                })}
+              </View>
 
               <Animated.View style={[styles.inputWrapper, { opacity: fadeInput }]}>
                 <TextInput
@@ -94,7 +200,6 @@ export default function Screen3() {
                   placeholderTextColor="rgba(255,255,255,0.3)"
                   value={name}
                   onChangeText={setName}
-                  autoFocus
                   autoCorrect={false}
                   autoCapitalize="words"
                   returnKeyType="done"
@@ -105,7 +210,10 @@ export default function Screen3() {
               </Animated.View>
             </View>
 
-            <View style={styles.footer}>
+            <Animated.View
+              style={[styles.footer, { opacity: fadeFooter }]}
+              pointerEvents={typewriterDone ? "auto" : "none"}
+            >
               <TouchableOpacity
                 onPress={handleContinue}
                 activeOpacity={name.trim() ? 0.75 : 1}
@@ -121,7 +229,7 @@ export default function Screen3() {
                   </Animated.Text>
                 </Animated.View>
               </TouchableOpacity>
-            </View>
+            </Animated.View>
           </SafeAreaView>
         </KeyboardAvoidingView>
       </Animated.View>
@@ -151,7 +259,14 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.mono,
     letterSpacing: 0.5,
   },
-  question: {
+  charRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  wordRow: {
+    flexDirection: "row",
+  },
+  charText: {
     fontSize: isSmallDevice ? 28 : 34,
     color: "#fff",
     fontFamily: Fonts.serif,
@@ -173,7 +288,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     paddingHorizontal: isSmallDevice ? 24 : 32,
-    paddingBottom: isSmallDevice ? 20 : 32,
+    paddingBottom: isSmallDevice ? 10 : 10,
   },
   continueButton: {
     borderRadius: 20,

@@ -13,6 +13,7 @@ import {
   Animated,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
 import { Colors, Fonts } from '@/constants/theme';
 import { GlowPresets } from '@/constants/glow';
@@ -94,7 +95,7 @@ export default function WriteScreen() {
               <Pressable
                 style={styles.recordButton}
                 onPress={handleNext}
-                onPressIn={() => setGlowState('press')}
+                onPressIn={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setGlowState('press'); }}
                 onPressOut={() => setGlowState('default')}
               >
                 <View style={styles.buttonContent}>
@@ -154,7 +155,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 320,
     height: 56,
-    borderRadius: 28,
+    borderRadius: 15,
     backgroundColor: '#FFFFFF',
     overflow: 'hidden',
   },

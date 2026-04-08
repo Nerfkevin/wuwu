@@ -16,8 +16,18 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, Fonts } from '@/constants/theme';
 import { AmbientSoundId, NATURE_SOUNDS, NOISE_SOUNDS } from './playback-constants';
+
+const NOISE_TILE_UI: Record<
+  'white' | 'pink' | 'brown',
+  { icon: keyof typeof Ionicons.glyphMap; color: string }
+> = {
+  white: { icon: 'pulse', color: '#D8D8E8' },
+  pink: { icon: 'heart-outline', color: '#E090B8' },
+  brown: { icon: 'layers-outline', color: '#B8926A' },
+};
 
 type Props = {
   visible: boolean;
@@ -137,13 +147,23 @@ export default function AmbientModal({
                 <View style={styles.grid}>
                   {NOISE_SOUNDS.map((s) => {
                     const active = activeAmbientSounds.has(s.id);
+                    const ui = NOISE_TILE_UI[s.id];
+                    const iconColor = active ? Colors.chakra.orange : ui.color;
                     return (
                       <Pressable
                         key={s.id}
                         style={[styles.tile, active && styles.tileActive]}
                         onPress={() => onToggle(s.id)}
                       >
-                        <Text style={[styles.tileText, active && styles.tileTextActive]}>{s.label}</Text>
+                        <View style={styles.noiseTileInner}>
+                          <Ionicons name={ui.icon} size={28} color={iconColor} />
+                          <Text
+                            style={[styles.noiseTileText, active && styles.tileTextActive]}
+                            numberOfLines={2}
+                          >
+                            {s.label}
+                          </Text>
+                        </View>
                       </Pressable>
                     );
                   })}
@@ -249,6 +269,19 @@ const styles = StyleSheet.create({
   },
   tileTextActive: {
     color: Colors.chakra.orange,
+  },
+  noiseTileInner: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  noiseTileText: {
+    fontFamily: Fonts.serif,
+    fontSize: 17,
+    lineHeight: 20,
+    color: Colors.text,
+    textAlign: 'center',
   },
   floatingSlider: {
     position: 'absolute',

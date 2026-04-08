@@ -15,6 +15,8 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   createAudioPlayer,
   getRecordingPermissionsAsync,
@@ -39,6 +41,7 @@ import {
   trimBuffer,
 } from './recording-audio';
 import { saveRecordingToDevice } from '@/lib/recording-store';
+import { getRecordingMicPref } from '@/lib/recording-mic-preference';
 import {
   activateLockScreenControls,
   clearLockScreenControls,
@@ -49,6 +52,7 @@ import {
 const recordColor = '#FF0000';
 const TRIM_MIN_GAP_SECONDS = 0.35;
 const TRIM_EPSILON = 0.0001;
+const RECORDING_EFFECTS_STORAGE_KEY = 'recording_effect_preferences_v1';
 
 const normalizeParam = (value?: string | string[]) =>
   Array.isArray(value) ? value[0] : value;
@@ -76,6 +80,7 @@ export default function RecordingScreen() {
     echo: false,
     reverb: false,
   });
+  const effectsPrefsLoadedRef = useRef(false);
   const transition = useRef(new Animated.Value(0)).current;
   const audioContextRef = useRef<AudioContext | null>(null);
   const decodedBufferRef = useRef<AudioBuffer | null>(null);
@@ -139,6 +144,35 @@ export default function RecordingScreen() {
     }
     return Math.min(1, Math.max(TRIM_MIN_GAP_SECONDS / audioDuration, 0.04));
   }, [audioDuration]);
+
+  useEffect(() => {
+    const loadEffectPrefs = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(RECORDING_EFFECTS_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as Partial<typeof effects>;
+          setEffects({
+            enhance: parsed.enhance === true,
+            echo: parsed.echo === true,
+            reverb: parsed.reverb === true,
+          });
+        }
+      } catch {
+        // ignore malformed persisted preferences
+      } finally {
+        effectsPrefsLoadedRef.current = true;
+      }
+    };
+
+    void loadEffectPrefs();
+  }, []);
+
+  useEffect(() => {
+    if (!effectsPrefsLoadedRef.current) {
+      return;
+    }
+    void AsyncStorage.setItem(RECORDING_EFFECTS_STORAGE_KEY, JSON.stringify(effects));
+  }, [effects]);
   const trimStartTime = audioDuration * trimStartRatio;
   const trimEndTime = audioDuration * trimEndRatio;
   const trimmedDuration = Math.max(0, trimEndTime - trimStartTime);
@@ -221,14 +255,13 @@ export default function RecordingScreen() {
         if (!isMounted) {
           return;
         }
-        decodedBufferRef.current = audioBuffer;
+        decodedBufferRef.current = effects.enhance && preparedEnhancedBuffer ? preparedEnhancedBuffer : audioBuffer;
         originalBufferRef.current = audioBuffer;
         enhancedBufferRef.current = preparedEnhancedBuffer;
-        enhanceAppliedRef.current = false;
+        enhanceAppliedRef.current = Boolean(effects.enhance && preparedEnhancedBuffer);
         setAudioDuration(audioBuffer.duration);
         setTrimStartRatio(0);
         setTrimEndRatio(1);
-        setEffects({ enhance: false, echo: false, reverb: false });
         setIsApplyingEnhance(false);
         setIsProcessingRecording(false);
         setProgress(0);
@@ -441,6 +474,16 @@ export default function RecordingScreen() {
         ...(Platform.OS === 'android' ? { shouldPlayInBackground: true } : {}),
       });
       await audioRecorder.prepareToRecordAsync();
+      if (Platform.OS !== 'web') {
+        const micPref = await getRecordingMicPref();
+        if (micPref?.uid && audioRecorder.setInput) {
+          try {
+            audioRecorder.setInput(micPref.uid);
+          } catch {
+            /* preferred input unavailable */
+          }
+        }
+      }
       audioRecorder.record();
     } catch {
       return;
@@ -492,6 +535,7 @@ export default function RecordingScreen() {
     if (!audioUri) {
       return;
     }
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (isPlaying) {
       stopCurrentPlayback(false, true);
       return;
@@ -514,6 +558,7 @@ export default function RecordingScreen() {
   };
 
   const handleTrimDragStart = () => {
+    void Haptics.selectionAsync();
     stopCurrentPlayback(true);
     pausedPositionRef.current = 0;
     setProgress(0);
@@ -525,12 +570,14 @@ export default function RecordingScreen() {
   };
 
   const handleScrubStart = () => {
+    void Haptics.selectionAsync();
     if (isPlaying) {
       stopCurrentPlayback(false, true);
     }
   };
 
   const handleScrubCommit = (ratio: number) => {
+    void Haptics.selectionAsync();
     scrubToRatio(ratio);
     if (previewPlayerRef.current) {
       previewPlayerRef.current.seekTo(pausedPositionRef.current).catch(() => undefined);
@@ -541,6 +588,7 @@ export default function RecordingScreen() {
     if (isApplyingEnhance) {
       return;
     }
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     if (effect !== 'enhance') {
       stopCurrentPlayback(true);
@@ -590,6 +638,7 @@ export default function RecordingScreen() {
   };
 
   const handleDelete = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     stopCurrentPlayback(true);
     setAudioUri('');
     setAudioDuration(0);
@@ -598,7 +647,6 @@ export default function RecordingScreen() {
     setIsApplyingEnhance(false);
     setTrimStartRatio(0);
     setTrimEndRatio(1);
-    setEffects({ enhance: false, echo: false, reverb: false });
     decodedBufferRef.current = null;
     originalBufferRef.current = null;
     enhancedBufferRef.current = null;
@@ -606,6 +654,7 @@ export default function RecordingScreen() {
   };
 
   const handleSave = async () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     stopCurrentPlayback(false);
     const context = audioContextRef.current;
     const sourceBuffer = decodedBufferRef.current;
@@ -663,11 +712,17 @@ export default function RecordingScreen() {
   };
 
   const toggleRecording = async () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (recorderState.isRecording) {
       await stopRecording();
     } else {
       await startRecording();
     }
+  };
+
+  const handleDismiss = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.back();
   };
 
   const handleDoneComposing = () => {
@@ -708,8 +763,12 @@ export default function RecordingScreen() {
         style={StyleSheet.absoluteFill}
       />
 
+      <TouchableOpacity onPress={handleDismiss} activeOpacity={0.6} style={styles.dragHandle}>
+        <View style={styles.dragPill} />
+      </TouchableOpacity>
+
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={handleDismiss} style={styles.backButton}>
           <Ionicons name="chevron-back" size={24} color={Colors.text} />
         </TouchableOpacity>
       </View>
@@ -721,7 +780,7 @@ export default function RecordingScreen() {
               <TextInput
                 style={styles.messageInput}
                 placeholder="I am..."
-                placeholderTextColor={Colors.text}
+                placeholderTextColor={Colors.textSecondary}
                 multiline
                 value={draftMessage}
                 onChangeText={setDraftMessage}
@@ -819,25 +878,40 @@ export default function RecordingScreen() {
             <View style={styles.reviewBottom}>
               <View style={styles.effectsRow}>
                 <TouchableOpacity
-                  style={[styles.effectBtn, effects.enhance && styles.effectBtnActive]}
+                  style={[styles.effectBtn, effects.enhance && styles.effectBtnEnhanceActive]}
                   onPress={() => toggleEffect('enhance')}
                 >
-                  <Text style={styles.effectIcon}>✨</Text>
-                  <Text style={styles.effectText}>Enhance</Text>
+                  <Ionicons
+                    name="sparkles"
+                    size={16}
+                    style={styles.effectIcon}
+                    color={effects.enhance ? '#CDB6FF' : 'rgba(255,255,255,0.28)'}
+                  />
+                  <Text style={[styles.effectText, effects.enhance && styles.effectTextEnhanceActive]}>Enhance</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.effectBtn, effects.echo && styles.effectBtnActive]}
+                  style={[styles.effectBtn, effects.echo && styles.effectBtnEchoActive]}
                   onPress={() => toggleEffect('echo')}
                 >
-                  <Text style={styles.effectIcon}>🔉</Text>
-                  <Text style={styles.effectText}>Echo</Text>
+                  <Ionicons
+                    name="volume-high"
+                    size={16}
+                    style={styles.effectIcon}
+                    color={effects.echo ? '#A9D7FF' : 'rgba(255,255,255,0.28)'}
+                  />
+                  <Text style={[styles.effectText, effects.echo && styles.effectTextEchoActive]}>Echo</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.effectBtn, effects.reverb && styles.effectBtnActive]}
+                  style={[styles.effectBtn, effects.reverb && styles.effectBtnReverbActive]}
                   onPress={() => toggleEffect('reverb')}
                 >
-                  <Text style={styles.effectIcon}>✣</Text>
-                  <Text style={styles.effectText}>Reverb</Text>
+                  <Ionicons
+                    name="water"
+                    size={16}
+                    style={styles.effectIcon}
+                    color={effects.reverb ? '#FFB39F' : 'rgba(255,255,255,0.28)'}
+                  />
+                  <Text style={[styles.effectText, effects.reverb && styles.effectTextReverbActive]}>Reverb</Text>
                 </TouchableOpacity>
               </View>
 
@@ -864,9 +938,20 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  dragHandle: {
+    alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  dragPill: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 60,
+    paddingTop: 12,
     paddingBottom: 10,
   },
   backButton: {
@@ -924,7 +1009,7 @@ const styles = StyleSheet.create({
   doneBtn: {
     width: '100%',
     height: 56,
-    borderRadius: 28,
+    borderRadius: 15,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
@@ -991,26 +1076,49 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 10,
+    marginTop: -20,
+    marginBottom: 20,
   },
   effectBtn: {
     flex: 1,
     borderRadius: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 12,
     gap: 4,
   },
-  effectBtnActive: {
-    backgroundColor: '#DDF0FF',
+  effectBtnEnhanceActive: {
+    backgroundColor: 'rgba(155,109,255,0.18)',
+    borderColor: 'rgba(155,109,255,0.55)',
+  },
+  effectBtnEchoActive: {
+    backgroundColor: 'rgba(76,161,255,0.16)',
+    borderColor: 'rgba(76,161,255,0.5)',
+  },
+  effectBtnReverbActive: {
+    backgroundColor: 'rgba(255,124,96,0.16)',
+    borderColor: 'rgba(255,124,96,0.5)',
   },
   effectIcon: {
     fontSize: 16,
+    opacity: 0.95,
   },
   effectText: {
     fontFamily: Fonts.mono,
     fontSize: 11,
-    color: '#111111',
+    color: 'rgba(255,255,255,0.3)',
+  },
+  effectTextEnhanceActive: {
+    color: '#CDB6FF',
+  },
+  effectTextEchoActive: {
+    color: '#A9D7FF',
+  },
+  effectTextReverbActive: {
+    color: '#FFB39F',
   },
   actionsRow: {
     width: '100%',
@@ -1028,16 +1136,18 @@ const styles = StyleSheet.create({
   saveBtn: {
     flex: 1,
     marginLeft: 14,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: '#10D53B',
+    borderRadius: 15,
+    paddingVertical: 18,
+    backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
   },
   saveText: {
-    fontFamily: Fonts.serifBold,
-    fontSize: 26,
-    color: '#FFFFFF',
+    fontFamily: Fonts.mono,
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    color: '#0a000d',
   },
   processingOverlay: {
     flex: 1,

@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
@@ -92,7 +93,7 @@ export default function RecordScreen() {
           
           <TouchableOpacity 
             style={styles.recordBtn}
-            onPress={handleRecordToggle}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); handleRecordToggle(); }}
           >
              <Ionicons name={isRecording ? "stop" : "mic"} size={40} color={Colors.text} />
           </TouchableOpacity>
@@ -117,7 +118,7 @@ export default function RecordScreen() {
                   styles.effectBtn,
                   effects[effect.toLowerCase() as keyof typeof effects] && styles.effectBtnActive
                 ]}
-                onPress={() => toggleEffect(effect.toLowerCase() as keyof typeof effects)}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); toggleEffect(effect.toLowerCase() as keyof typeof effects); }}
               >
                 <Text style={[
                   styles.effectText,
@@ -132,7 +133,7 @@ export default function RecordScreen() {
               <Ionicons name="trash-outline" size={24} color={Colors.textSecondary} />
             </TouchableOpacity>
             
-            <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
+            <TouchableOpacity style={styles.saveBtn} onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); handleSave(); }}>
               <LinearGradient
                 colors={Colors.chakra.gradient}
                 style={styles.saveGradient}

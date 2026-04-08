@@ -10,7 +10,10 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.kevinngo03.wuwu"
+      "bundleIdentifier": "com.kevinngo03.wuwu",
+      "infoPlist": {
+        "SKIncludeConsumableInAppPurchaseHistory": true
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -56,7 +59,12 @@
           "iosBackgroundMode": true,
           "androidForegroundService": true
         }
-      ]
+      ],
+      "expo-font",
+      "expo-image",
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -9,7 +9,9 @@ import {
   FlatList,
   Pressable,
   ScrollView,
+  Easing,
 } from "react-native";
+import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -35,10 +37,61 @@ const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
 const TOTAL_SLIDES = 6; // 0=pillar grid, 1-3=affirmations, 4=record, 5=frequency
 const MSG_COUNT    = 5;
+const HEADER_HORIZONTAL_PADDING = isSmallDevice ? 28 : 32;
+const CONTENT_HORIZONTAL_PADDING = isSmallDevice ? 20 : 24;
+const HEADER_TOP_PADDING = isSmallDevice ? 20 : 28;
+const TYPEWRITER_STEP_MS = 33;
+const LETTER_FADE_MS = 480;
+
+type CharToken = { ch: string };
+type WordToken = { chars: CharToken[]; startIdx: number };
+
+function stringToCharTokens(s: string): CharToken[] {
+  return [...s].map((ch) => ({ ch }));
+}
+
+function charsToWordTokens(chars: CharToken[]): WordToken[] {
+  const words: WordToken[] = [];
+  let i = 0;
+  while (i < chars.length) {
+    const startIdx = i;
+    if (chars[i].ch === "\n") {
+      words.push({ chars: [{ ch: "\n" }], startIdx });
+      i += 1;
+      continue;
+    }
+    const wordChars: CharToken[] = [];
+    while (i < chars.length && chars[i].ch !== " " && chars[i].ch !== "\n") wordChars.push(chars[i++]);
+    while (i < chars.length && chars[i].ch === " ") wordChars.push(chars[i++]);
+    if (wordChars.length > 0) words.push({ chars: wordChars, startIdx });
+  }
+  return words;
+}
+
+const letterEnter = FadeIn.duration(LETTER_FADE_MS).easing(REasing.out(REasing.cubic));
+
+function FadeLetter({ ch, charStyle }: { ch: string; charStyle: object }) {
+  return (
+    <RAnimated.View entering={letterEnter}>
+      <Text style={charStyle}>{ch}</Text>
+    </RAnimated.View>
+  );
+}
+
+const PILLAR_TITLE = "select affirmation\npillar";
+const RECORD_TITLE = "record your\nmessages";
+const FREQUENCY_TITLE = "layer healing\nfrequency";
+
+const PILLAR_TITLE_TOKENS = stringToCharTokens(PILLAR_TITLE);
+const PILLAR_TITLE_WORDS  = charsToWordTokens(PILLAR_TITLE_TOKENS);
+const RECORD_TITLE_TOKENS = stringToCharTokens(RECORD_TITLE);
+const RECORD_TITLE_WORDS  = charsToWordTokens(RECORD_TITLE_TOKENS);
+const FREQ_TITLE_TOKENS   = stringToCharTokens(FREQUENCY_TITLE);
+const FREQ_TITLE_WORDS    = charsToWordTokens(FREQ_TITLE_TOKENS);
 
 // ─── frequency slide constants ────────────────────────────────────────────────
 
-const FREQ_ITEM_SIZE   = (width - 40 - 24) / 3;
+const FREQ_ITEM_SIZE   = (width - (isSmallDevice ? 40 : 48) - 24) / 3;
 const FREQ_ITEM_RADIUS = 24;
 const FREQ_GRID_HEIGHT = FREQ_ITEM_SIZE * 3 + 12 * 2;
 
@@ -82,9 +135,9 @@ type TrackItem = {
   recorded: boolean;
 };
 
-type RecordingSelectionSnapshot = {
-  pillars: string[];
-  messages: Record<string, string>;
+type SelectedRecordingItem = {
+  pillar: string;
+  text: string;
 };
 
 // ─── static data ──────────────────────────────────────────────────────────────
@@ -150,21 +203,39 @@ function PillarCard({ item, isSelected, onSelect }: {
   item: PillarItem; isSelected: boolean; onSelect: () => void;
 }) {
   const [glowState, setGlowState] = useState<GlowEvent>("default");
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const iconColor = isSelected ? item.color : "rgba(255,255,255,0.4)";
+  const titleColor = isSelected ? item.color : "rgba(255,255,255,0.62)";
+
+  const handlePressIn = () => {
+    setGlowState("press");
+    Animated.spring(scaleAnim, { toValue: 0.92, useNativeDriver: true, speed: 60, bounciness: 0 }).start();
+  };
+  const handlePressOut = () => {
+    setGlowState("default");
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 6 }).start();
+  };
+
   return (
     <View style={styles.cardWrapper}>
-      <AnimatedGlow preset={GlowPresets.ripple(24, item.color)} activeState={isSelected ? "hover" : glowState}>
-        <Pressable
-          style={[styles.card, isSelected && { backgroundColor: "#1A1A1E" }]}
-          onPress={onSelect}
-          onPressIn={() => setGlowState("press")}
-          onPressOut={() => setGlowState("default")}
-        >
-          <View style={styles.cardContent}>
-            <Ionicons name={item.icon} size={34} color={item.color} style={styles.cardIcon} />
-            <Text style={styles.cardTitle}>{item.title}</Text>
-          </View>
-        </Pressable>
-      </AnimatedGlow>
+      <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+        <AnimatedGlow preset={GlowPresets.ripple(24, item.color, 0.35)} activeState={isSelected ? "hover" : glowState}>
+          <Pressable
+            style={[
+              styles.card,
+              { borderColor: isSelected ? item.color : "rgba(255,255,255,0.14)" },
+            ]}
+            onPress={onSelect}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
+          >
+            <View style={styles.cardContent}>
+              <Ionicons name={item.icon} size={34} color={iconColor} style={styles.cardIcon} />
+              <Text style={[styles.cardTitle, { color: titleColor }]}>{item.title}</Text>
+            </View>
+          </Pressable>
+        </AnimatedGlow>
+      </Animated.View>
     </View>
   );
 }
@@ -183,57 +254,88 @@ export default function Screen13() {
 
   // ── frequency slide state ──
   const [selectedFreq,       setSelectedFreq]       = useState("528");
-  const { previewFrequency, previewBrainwave } = useFrequencyPreview();
+  const { previewFrequency, previewBrainwave, stopPreview } = useFrequencyPreview();
   const [selectedBg,         setSelectedBg]         = useState<typeof BG_OPTIONS[number]>("Brainwaves");
   const [selectedBrainwave,  setSelectedBrainwave]  = useState("alpha");
+  const [pillarTitleVisible,  setPillarTitleVisible]  = useState(0);
+  const [recordTitleVisible,  setRecordTitleVisible]  = useState(0);
+  const [freqTitleVisible,    setFreqTitleVisible]    = useState(0);
+  const [titleAnimDone,       setTitleAnimDone]       = useState(false);
 
   // ── recording slide state ──
+  const [recordingSelections, setRecordingSelections] = useState<SelectedRecordingItem[]>([]);
   const [savedRecordingsByText, setSavedRecordingsByText] = useState<Record<string, { uri: string }>>({});
   const [playingId, setPlayingId]                         = useState<string | null>(null);
   const playerRef      = useRef<AudioPlayer | null>(null);
   const statusTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const selectionRef = useRef<{
-    pillars: string[];
-    messages: Record<string, string>;
-  }>({
-    pillars: [],
-    messages: {},
-  });
 
   // ── animation refs ──
   const dotAnims = useRef(
     Array.from({ length: TOTAL_SLIDES }, (_, i) => new Animated.Value(i === 0 ? 1 : 0.3))
   ).current;
-  const fadeQ        = useRef(new Animated.Value(0)).current;
   const fadeGrid     = useRef(new Animated.Value(0)).current;
   const fadeAff      = useRef(new Animated.Value(0)).current;
   const fadeMsgs     = useRef(new Animated.Value(1)).current;
   const fadeRec      = useRef(new Animated.Value(0)).current;
   const fadeFreq     = useRef(new Animated.Value(0)).current;
   const fadeContinue = useRef(new Animated.Value(0)).current;
+  const recordIconPulse = useRef(new Animated.Value(0)).current;
+  const recordIconGlow  = useRef(new Animated.Value(0)).current;
+  const titleTypingTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const titleIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // pillar indicator scale/opacity (3 values)
   const pillarScales    = useRef([new Animated.Value(1), new Animated.Value(0.78), new Animated.Value(0.78)]).current;
   const pillarOpacities = useRef([new Animated.Value(1), new Animated.Value(0.35), new Animated.Value(0.35)]).current;
 
+  const clearTitleTypingTimeouts = useCallback(() => {
+    titleTypingTimeoutsRef.current.forEach(clearTimeout);
+    titleTypingTimeoutsRef.current = [];
+    if (titleIntervalRef.current) {
+      clearInterval(titleIntervalRef.current);
+      titleIntervalRef.current = null;
+    }
+  }, []);
+
+  const runTitleTypewriter = useCallback(
+    (
+      tokens: CharToken[],
+      setVisible: React.Dispatch<React.SetStateAction<number>>,
+      fadeBody: Animated.Value,
+      onComplete?: () => void
+    ) => {
+      clearTitleTypingTimeouts();
+      setVisible(0);
+      fadeBody.setValue(0);
+
+      let i = 0;
+      titleIntervalRef.current = setInterval(() => {
+        i += 1;
+        if (i > tokens.length) {
+          clearInterval(titleIntervalRef.current!);
+          titleIntervalRef.current = null;
+          onComplete?.();
+          const ft = setTimeout(() => {
+            Animated.timing(fadeBody, {
+              toValue: 1,
+              duration: 350,
+              useNativeDriver: true,
+            }).start();
+          }, 140);
+          titleTypingTimeoutsRef.current.push(ft);
+          return;
+        }
+        const ch = tokens[i - 1]?.ch;
+        if (ch && ch !== " " && ch !== "\n") Haptics.selectionAsync();
+        setVisible(i);
+      }, TYPEWRITER_STEP_MS);
+    },
+    [clearTitleTypingTimeouts]
+  );
+
   // keep a ref of activeIndex for useFocusEffect
   const activeIndexRef = useRef(0);
   useEffect(() => { activeIndexRef.current = activeIndex; }, [activeIndex]);
-
-  const loadStoredOnboardingSelection = useCallback(async () => {
-    const [rawPillars, rawMessages] = await Promise.all([
-      AsyncStorage.getItem("onboarding_pillars_selected"),
-      AsyncStorage.getItem("onboarding_affirmations"),
-    ]);
-
-    const storedPillars: string[] = rawPillars ? JSON.parse(rawPillars) : [];
-    const storedMessages: Record<string, string> = rawMessages ? JSON.parse(rawMessages) : {};
-
-    return {
-      pillars: storedPillars.filter((pillar, index) => storedPillars.indexOf(pillar) === index),
-      messages: storedMessages,
-    } satisfies RecordingSelectionSnapshot;
-  }, []);
 
   const loadSavedRecordingMeta = useCallback(async () => {
     const recordings = await getSavedRecordings();
@@ -243,13 +345,7 @@ export default function Screen13() {
   }, []);
 
   const recordingItems = React.useMemo(() => {
-    const orderedPillars = selectedPillars.filter(
-      (pillar, index) =>
-        selectedPillars.indexOf(pillar) === index && !!selectedMessages[pillar]?.trim()
-    );
-
-    return orderedPillars.map((pillar, index) => {
-      const text = selectedMessages[pillar];
+    return recordingSelections.map(({ pillar, text }, index) => {
       const saved = savedRecordingsByText[text];
 
       return {
@@ -260,24 +356,36 @@ export default function Screen13() {
         recorded: !!saved?.uri,
       };
     });
-  }, [savedRecordingsByText, selectedMessages, selectedPillars]);
+  }, [recordingSelections, savedRecordingsByText]);
 
   // ── init ──
   useEffect(() => {
     fadeIn();
-    Animated.stagger(80, [
-      Animated.timing(fadeQ,    { toValue: 1, duration: 500, useNativeDriver: true }),
-      Animated.timing(fadeGrid, { toValue: 1, duration: 400, useNativeDriver: true }),
-    ]).start();
-
-    loadStoredOnboardingSelection().then((storedSelection) => {
-      if (!selectionRef.current.pillars.length && storedSelection.pillars.length) {
-        selectionRef.current = storedSelection;
-        setSelectedPillars(storedSelection.pillars);
-        setSelectedMessages(storedSelection.messages);
-      }
-    });
   }, []);
+
+  useEffect(() => {
+    setTitleAnimDone(false);
+    if (activeIndex === 0) {
+      runTitleTypewriter(PILLAR_TITLE_TOKENS, setPillarTitleVisible, fadeGrid, () => setTitleAnimDone(true));
+      return;
+    }
+
+    if (activeIndex === 4) {
+      runTitleTypewriter(RECORD_TITLE_TOKENS, setRecordTitleVisible, fadeRec, () => setTitleAnimDone(true));
+      return;
+    }
+
+    if (activeIndex === 5) {
+      runTitleTypewriter(FREQ_TITLE_TOKENS, setFreqTitleVisible, fadeFreq, () => setTitleAnimDone(true));
+      return;
+    }
+
+    // affirmation slides have no title typewriter — unblock immediately
+    setTitleAnimDone(true);
+    clearTitleTypingTimeouts();
+  }, [activeIndex, clearTitleTypingTimeouts, fadeFreq, fadeGrid, fadeRec, runTitleTypewriter]);
+
+  useEffect(() => () => clearTitleTypingTimeouts(), [clearTitleTypingTimeouts]);
 
   // dots
   useEffect(() => {
@@ -296,6 +404,45 @@ export default function Screen13() {
     pillarOpacities.forEach((anim, i) =>
       Animated.timing(anim, { toValue: i === cur ? 1 : 0.35, duration: 280, useNativeDriver: true }).start()
     );
+  }, [activeIndex]);
+
+  useEffect(() => {
+    if (activeIndex !== 4) {
+      recordIconPulse.stopAnimation();
+      recordIconPulse.setValue(0);
+      recordIconGlow.stopAnimation();
+      recordIconGlow.setValue(0);
+      return;
+    }
+
+    // shake: waits, then rattles
+    const shake = Animated.loop(
+      Animated.sequence([
+        Animated.delay(1200),
+        Animated.timing(recordIconPulse, { toValue:  1, duration: 80, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(recordIconPulse, { toValue: -1, duration: 80, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(recordIconPulse, { toValue:  1, duration: 80, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(recordIconPulse, { toValue: -1, duration: 80, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(recordIconPulse, { toValue:  0, duration: 60, easing: Easing.linear, useNativeDriver: true }),
+      ])
+    );
+
+    // slow breathe: scale + opacity
+    const glow = Animated.loop(
+      Animated.sequence([
+        Animated.timing(recordIconGlow, { toValue: 1, duration: 950, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(recordIconGlow, { toValue: 0, duration: 950, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ])
+    );
+
+    shake.start();
+    glow.start();
+    return () => { shake.stop(); glow.stop(); };
+  }, [activeIndex, recordIconPulse, recordIconGlow]);
+
+  // stop freq preview when leaving slide 5
+  useEffect(() => {
+    if (activeIndex !== 5) stopPreview();
   }, [activeIndex]);
 
   // stop playback when leaving slide 4
@@ -336,6 +483,7 @@ export default function Screen13() {
   const currentAffPillar = activeIndex >= 1 && activeIndex <= 3 ? selectedPillars[activeIndex - 1] : null;
 
   const canContinue =
+    !titleAnimDone ? false :
     activeIndex === 0 ? selectedPillars.length >= 3 :
     activeIndex >= 1 && activeIndex <= 3 ? !!selectedMessages[currentAffPillar!] :
     activeIndex === 4 ? recordingItems.length > 0 && recordingItems.every((item) => item.recorded) :
@@ -359,11 +507,12 @@ export default function Screen13() {
 
   const goToAffirmations = () => {
     const msgs: Record<string, string[]> = {};
-    selectionRef.current.pillars.forEach(v => { msgs[v] = shuffleArr(AFFIRMATION_PILLARS[v as PillarKey].messages); });
+    selectedPillars.forEach((pillar) => {
+      msgs[pillar] = shuffleArr(AFFIRMATION_PILLARS[pillar as PillarKey].messages);
+    });
     setShuffledMessages(msgs);
     Animated.parallel([
       Animated.timing(fadeGrid, { toValue: 0, duration: 220, useNativeDriver: true }),
-      Animated.timing(fadeQ,    { toValue: 0, duration: 180, useNativeDriver: true }),
     ]).start(() => {
       setActiveIndex(1);
       Animated.timing(fadeAff, { toValue: 1, duration: 400, useNativeDriver: true }).start();
@@ -381,7 +530,6 @@ export default function Screen13() {
     Animated.timing(fadeAff, { toValue: 0, duration: 220, useNativeDriver: true }).start(() => {
       fadeRec.setValue(0);
       setActiveIndex(4);
-      Animated.timing(fadeRec, { toValue: 1, duration: 350, useNativeDriver: true }).start();
     });
   };
 
@@ -389,7 +537,6 @@ export default function Screen13() {
     Animated.timing(fadeRec, { toValue: 0, duration: 220, useNativeDriver: true }).start(() => {
       fadeFreq.setValue(0);
       setActiveIndex(5);
-      Animated.timing(fadeFreq, { toValue: 1, duration: 350, useNativeDriver: true }).start();
     });
   };
 
@@ -411,14 +558,11 @@ export default function Screen13() {
         : prev.length < 3
           ? [...prev, value]
           : prev;
-
-      selectionRef.current = {
-        pillars: next,
-        messages: Object.fromEntries(
-          Object.entries(selectionRef.current.messages).filter(([pillar]) => next.includes(pillar))
-        ),
-      };
-      setSelectedMessages(selectionRef.current.messages);
+      setSelectedMessages((prevMessages) =>
+        Object.fromEntries(
+          Object.entries(prevMessages).filter(([pillar]) => next.includes(pillar))
+        )
+      );
 
       return next;
     });
@@ -483,19 +627,27 @@ export default function Screen13() {
     if (activeIndex === 0) {
       await AsyncStorage.setItem(
         "onboarding_pillars_selected",
-        JSON.stringify(selectionRef.current.pillars)
+        JSON.stringify(selectedPillars)
       );
       goToAffirmations();
     } else if (activeIndex < 3) {
       goToNextAff(activeIndex + 1);
     } else if (activeIndex === 3) {
+      const nextRecordingSelections = selectedPillars
+        .map((pillar) => ({
+          pillar,
+          text: selectedMessages[pillar]?.trim() ?? "",
+        }))
+        .filter((item) => item.text.length > 0);
+
+      setRecordingSelections(nextRecordingSelections);
       await AsyncStorage.setItem(
         "onboarding_pillars_selected",
-        JSON.stringify(selectionRef.current.pillars)
+        JSON.stringify(selectedPillars)
       );
       await AsyncStorage.setItem(
         "onboarding_affirmations",
-        JSON.stringify(selectionRef.current.messages)
+        JSON.stringify(selectedMessages)
       );
       goToRecordingSlide();
     } else if (activeIndex === 4) {
@@ -510,10 +662,20 @@ export default function Screen13() {
 
   // ── recording slide render helper ──
 
-  const renderTrackItem = ({ item }: { item: TrackItem }) => {
+  const renderTrackItem = (item: TrackItem) => {
     const pillarData   = AFFIRMATION_PILLARS[item.pillar as PillarKey];
     const glowColor    = pillarData?.color ?? Colors.chakra.violet;
     const isNowPlaying = playingId === item.id;
+    const needsRecording = !item.recorded;
+    const micStyle = needsRecording
+      ? {
+          opacity: recordIconGlow.interpolate({ inputRange: [0, 1], outputRange: [0.38, 1] }),
+          transform: [
+            { rotate: recordIconPulse.interpolate({ inputRange: [-1, 0, 1], outputRange: ["-22deg", "0deg", "22deg"] }) },
+            { scale:  recordIconGlow.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1.14] }) },
+          ],
+        }
+      : undefined;
 
     return (
       <View style={styles.trackRow}>
@@ -521,33 +683,28 @@ export default function Screen13() {
           preset={GlowPresets.vaporwave(Layout.borderRadius, glowColor)}
           activeState="default"
         >
-          <View style={[
-            styles.trackOuter,
-            { borderColor: glowColor },
-          ]}>
+          <View style={[styles.trackOuter, { borderColor: glowColor }]}>
             <View style={styles.trackInner}>
-              <View style={styles.dragHandle}>
-                <Ionicons
-                  name="ellipsis-vertical"
-                  size={18}
-                  color={Colors.textSecondary}
-                />
-              </View>
-
               <View style={styles.trackTextWrap}>
                 <Text style={styles.trackText} numberOfLines={2}>{item.text}</Text>
                 <Text style={styles.trackSub}>{pillarData?.title ?? item.pillar}</Text>
               </View>
 
               <TouchableOpacity
-                style={[styles.trackActionBtn, item.recorded && { backgroundColor: "#333" }]}
+                style={[styles.trackActionBtn, { backgroundColor: item.recorded ? glowColor + "22" : "#1e1e1e" }]}
                 onPress={() => item.recorded ? handlePlay(item) : handleRecord(item)}
               >
-                <Ionicons
-                  name={!item.recorded ? "mic" : isNowPlaying ? "pause" : "play"}
-                  size={20}
-                  color={item.recorded ? Colors.text : glowColor}
-                />
+                {needsRecording ? (
+                  <Animated.View style={micStyle}>
+                    <Ionicons name="mic" size={20} color={glowColor} />
+                  </Animated.View>
+                ) : (
+                  <Ionicons
+                    name={isNowPlaying ? "pause" : "play"}
+                    size={20}
+                    color={glowColor}
+                  />
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -571,10 +728,32 @@ export default function Screen13() {
 
         {/* ── slide 0: question + grid ── */}
         {activeIndex === 0 && (<>
-          <Animated.View style={[styles.questionWrap, { opacity: fadeQ }]}>
-            <Text style={styles.question}>select affirmation{"\n"}pillar</Text>
-            <Text style={styles.hint}>select 3 pillars to begin, you can always add more later!</Text>
-          </Animated.View>
+          <View style={styles.questionWrap}>
+            <View style={styles.pillarHeaderRow}>
+              <View style={styles.pillarHeaderLeft}>
+                <View style={styles.titleCharRow}>
+                  {PILLAR_TITLE_WORDS.map((word, wIdx) => {
+                    const charsVisible = Math.max(0, Math.min(word.chars.length, pillarTitleVisible - word.startIdx));
+                    if (charsVisible === 0) return null;
+                    if (word.chars.length === 1 && word.chars[0].ch === "\n") return <View key={wIdx} style={styles.titleLineBreak} />;
+                    return (
+                      <View key={wIdx} style={styles.titleWordRow}>
+                        {word.chars.slice(0, charsVisible).map((tok, cIdx) => (
+                          <FadeLetter key={`${word.startIdx}-${cIdx}`} ch={tok.ch} charStyle={styles.question} />
+                        ))}
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+              <Animated.View style={{ opacity: fadeGrid }}>
+                <Ionicons name="apps-outline" size={46} color={Colors.textSecondary} style={styles.pillarDecorIcon} />
+              </Animated.View>
+            </View>
+            <Animated.View style={{ opacity: fadeGrid }}>
+              <Text style={styles.hint}>select 3 pillars to begin, you can always add more later!</Text>
+            </Animated.View>
+          </View>
 
           <Animated.View style={[styles.optionsArea, { opacity: fadeGrid }]}>
             <FlatList
@@ -614,7 +793,7 @@ export default function Screen13() {
                     style={{ transform: [{ scale: pillarScales[i] }], opacity: pillarOpacities[i] }}
                   >
                     <AnimatedGlow
-                      preset={GlowPresets.ripple(24, p.color)}
+                      preset={GlowPresets.ripple(24, p.color, 0.35)}
                       activeState={isActive ? "hover" : "default"}
                     >
                       <View style={[
@@ -632,9 +811,12 @@ export default function Screen13() {
               })}
             </View>
 
-            <Text style={styles.affDesc}>
-              choose an affirmation message tape, you can always add more later!
-            </Text>
+            <View style={styles.affDescRow}>
+              <Text style={[styles.affDesc, { flex: 1, marginBottom: 0 }]}>
+                choose an affirmation message, you can always add more later!
+              </Text>
+              <Ionicons name="chatbubbles-outline" size={40} color={Colors.textSecondary} style={styles.affDecorIcon} />
+            </View>
 
             <View style={styles.shuffleRow}>
               <TouchableOpacity
@@ -655,14 +837,7 @@ export default function Screen13() {
                     style={[styles.msgCard, isSel && styles.msgCardSelected]}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setSelectedMessages(prev => {
-                        const next = { ...prev, [currentAffPillar]: msg };
-                        selectionRef.current = {
-                          pillars: selectionRef.current.pillars,
-                          messages: next,
-                        };
-                        return next;
-                      });
+                      setSelectedMessages((prev) => ({ ...prev, [currentAffPillar]: msg }));
                     }}
                     activeOpacity={0.75}
                   >
@@ -676,131 +851,171 @@ export default function Screen13() {
 
         {/* ── slide 4: record your messages ── */}
         {activeIndex === 4 && (
-          <Animated.View style={[styles.recArea, { opacity: fadeRec }]}>
+          <View style={styles.recArea}>
             <View style={styles.recHeader}>
               <View style={styles.recHeaderLeft}>
-                <Text style={styles.recTitle}>record your{"\n"}messages</Text>
-                <Text style={styles.recSubtitle}>
-                  click on each message and record{"\n"}them in your own voice
-                </Text>
+                <View style={styles.titleCharRow}>
+                  {RECORD_TITLE_WORDS.map((word, wIdx) => {
+                    const charsVisible = Math.max(0, Math.min(word.chars.length, recordTitleVisible - word.startIdx));
+                    if (charsVisible === 0) return null;
+                    if (word.chars.length === 1 && word.chars[0].ch === "\n") return <View key={wIdx} style={styles.titleLineBreak} />;
+                    return (
+                      <View key={wIdx} style={styles.titleWordRow}>
+                        {word.chars.slice(0, charsVisible).map((tok, cIdx) => (
+                          <FadeLetter key={`${word.startIdx}-${cIdx}`} ch={tok.ch} charStyle={styles.recTitle} />
+                        ))}
+                      </View>
+                    );
+                  })}
+                </View>
+                <Animated.View style={{ opacity: fadeRec }}>
+                  <Text style={styles.recSubtitle}>
+                    click on each message and record{"\n"}them in your own voice
+                  </Text>
+                </Animated.View>
               </View>
-              <Text style={styles.micDecor}>🎙️</Text>
+              <Animated.View style={{ opacity: fadeRec }}>
+                <Text style={styles.micDecor}>🎙️</Text>
+              </Animated.View>
             </View>
 
-            <View style={styles.recBody}>
-              <FlatList
-                data={recordingItems}
-                renderItem={({ item }) => renderTrackItem({ item })}
-                keyExtractor={item => item.id}
+            <Animated.View style={[styles.recBody, { opacity: fadeRec }]}>
+              <ScrollView
                 contentContainerStyle={[
                   styles.trackListContent,
                   recordingItems.length === 0 && styles.trackListContentEmpty,
                 ]}
                 style={styles.recList}
                 showsVerticalScrollIndicator={false}
-                ListEmptyComponent={<Text style={styles.emptyTracksText}>no selected messages yet</Text>}
-              />
-            </View>
-          </Animated.View>
+              >
+                {recordingItems.length > 0 ? (
+                  recordingItems.map((item) => (
+                    <View key={item.id}>{renderTrackItem(item)}</View>
+                  ))
+                ) : (
+                  <Text style={styles.emptyTracksText}>no selected messages yet</Text>
+                )}
+              </ScrollView>
+            </Animated.View>
+          </View>
         )}
 
         {/* ── slide 5: frequency selection ── */}
         {activeIndex === 5 && (
-          <Animated.View style={[styles.freqArea, { opacity: fadeFreq }]}>
+          <View style={styles.freqArea}>
             <View style={styles.freqHeaderBlock}>
               <View style={styles.freqHeaderLeft}>
-                <Text style={styles.freqTitle}>layer healing{"\n"}frequency</Text>
-                <Text style={styles.freqSubtitle}>
-                  select a frequency and soundscape{"\n"}that aligns with your subconscious goals
-                </Text>
-              </View>
-              <Ionicons name="pulse" size={48} color={Colors.textSecondary} style={styles.freqDecorIcon} />
-            </View>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.bgList}
-              style={styles.bgScroll}
-            >
-              {BG_OPTIONS.map(bg => (
-                <TouchableOpacity
-                  key={bg}
-                  style={[styles.bgItem, selectedBg === bg && styles.bgItemSelected]}
-                  onPress={() => setSelectedBg(bg)}
-                >
-                  <Text style={[styles.bgText, selectedBg === bg && styles.bgTextSelected]}>{bg}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <View style={[styles.freqGridContainer, { height: FREQ_GRID_HEIGHT }]}>
-              {selectedBg === "Brainwaves" ? (
-                <View style={styles.freqList}>
-                  <View style={styles.freqRow}>
-                    {BRAINWAVES.slice(0, 3).map(item => (
-                      <AnimatedGlow
-                        key={item.id}
-                        preset={GlowPresets.vaporwave(FREQ_ITEM_RADIUS, item.color)}
-                        activeState={selectedBrainwave === item.id ? "press" : "default"}
-                      >
-                        <Pressable
-                          style={[
-                            styles.freqCard,
-                            { borderColor: item.color },
-                            selectedBrainwave === item.id && { backgroundColor: item.color + "20" },
-                          ]}
-                          onPress={() => { setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
-                        >
-                          <Text style={styles.freqHz}>{item.name}</Text>
-                          <Text style={styles.freqBrainHz}>{item.hz}</Text>
-                          <Text style={styles.freqLabel}>{item.label}</Text>
-                        </Pressable>
-                      </AnimatedGlow>
-                    ))}
-                  </View>
-                  <View style={[styles.freqRow, { justifyContent: "center" }]}>
-                    {BRAINWAVES.slice(3).map(item => (
-                      <AnimatedGlow
-                        key={item.id}
-                        preset={GlowPresets.vaporwave(FREQ_ITEM_RADIUS, item.color)}
-                        activeState={selectedBrainwave === item.id ? "press" : "default"}
-                      >
-                        <Pressable
-                          style={[
-                            styles.freqCard,
-                            { borderColor: item.color },
-                            selectedBrainwave === item.id && { backgroundColor: item.color + "20" },
-                          ]}
-                          onPress={() => { setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
-                        >
-                          <Text style={styles.freqHz}>{item.name}</Text>
-                          <Text style={styles.freqBrainHz}>{item.hz}</Text>
-                          <Text style={styles.freqLabel}>{item.label}</Text>
-                        </Pressable>
-                      </AnimatedGlow>
-                    ))}
-                  </View>
+                <View style={styles.titleCharRow}>
+                  {FREQ_TITLE_WORDS.map((word, wIdx) => {
+                    const charsVisible = Math.max(0, Math.min(word.chars.length, freqTitleVisible - word.startIdx));
+                    if (charsVisible === 0) return null;
+                    if (word.chars.length === 1 && word.chars[0].ch === "\n") return <View key={wIdx} style={styles.titleLineBreak} />;
+                    return (
+                      <View key={wIdx} style={styles.titleWordRow}>
+                        {word.chars.slice(0, charsVisible).map((tok, cIdx) => (
+                          <FadeLetter key={`${word.startIdx}-${cIdx}`} ch={tok.ch} charStyle={styles.freqTitle} />
+                        ))}
+                      </View>
+                    );
+                  })}
                 </View>
-              ) : (
-                <FlatList
-                  data={FREQUENCIES}
-                  renderItem={({ item }) => (
-                    <FrequencyCard
-                      item={item}
-                      isSelected={selectedFreq === item.id}
-                      onSelect={() => { setSelectedFreq(item.id); previewFrequency(item.id, selectedBg); }}
-                    />
-                  )}
-                  keyExtractor={item => item.id}
-                  numColumns={3}
-                  scrollEnabled={false}
-                  columnWrapperStyle={styles.freqRow}
-                  contentContainerStyle={styles.freqList}
-                />
-              )}
+                <Animated.View style={{ opacity: fadeFreq }}>
+                  <Text style={styles.freqSubtitle}>
+                    select a frequency and soundscape{"\n"}that aligns with your subconscious goals
+                  </Text>
+                </Animated.View>
+              </View>
+              <Animated.View style={{ opacity: fadeFreq }}>
+                <Ionicons name="pulse" size={48} color={Colors.textSecondary} style={styles.freqDecorIcon} />
+              </Animated.View>
             </View>
-          </Animated.View>
+
+            <Animated.View style={{ opacity: fadeFreq }}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.bgList}
+                style={styles.bgScroll}
+              >
+                {BG_OPTIONS.map(bg => (
+                  <TouchableOpacity
+                    key={bg}
+                    style={[styles.bgItem, selectedBg === bg && styles.bgItemSelected]}
+                    onPress={() => { stopPreview(); setSelectedBg(bg); }}
+                  >
+                    <Text style={[styles.bgText, selectedBg === bg && styles.bgTextSelected]}>{bg}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <View style={[styles.freqGridContainer, { height: FREQ_GRID_HEIGHT }]}>
+                {selectedBg === "Brainwaves" ? (
+                  <View style={styles.freqList}>
+                    <View style={styles.freqRow}>
+                      {BRAINWAVES.slice(0, 3).map(item => (
+                        <AnimatedGlow
+                          key={item.id}
+                          preset={GlowPresets.vaporwave(FREQ_ITEM_RADIUS, item.color)}
+                          activeState={selectedBrainwave === item.id ? "press" : "default"}
+                        >
+                          <Pressable
+                            style={[
+                              styles.freqCard,
+                              { borderColor: item.color },
+                              selectedBrainwave === item.id && { backgroundColor: item.color + "20" },
+                            ]}
+                            onPress={() => { setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
+                          >
+                            <Text style={styles.freqHz}>{item.name}</Text>
+                            <Text style={styles.freqBrainHz}>{item.hz}</Text>
+                            <Text style={styles.freqLabel}>{item.label}</Text>
+                          </Pressable>
+                        </AnimatedGlow>
+                      ))}
+                    </View>
+                    <View style={[styles.freqRow, { justifyContent: "center" }]}>
+                      {BRAINWAVES.slice(3).map(item => (
+                        <AnimatedGlow
+                          key={item.id}
+                          preset={GlowPresets.vaporwave(FREQ_ITEM_RADIUS, item.color)}
+                          activeState={selectedBrainwave === item.id ? "press" : "default"}
+                        >
+                          <Pressable
+                            style={[
+                              styles.freqCard,
+                              { borderColor: item.color },
+                              selectedBrainwave === item.id && { backgroundColor: item.color + "20" },
+                            ]}
+                            onPress={() => { setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
+                          >
+                            <Text style={styles.freqHz}>{item.name}</Text>
+                            <Text style={styles.freqBrainHz}>{item.hz}</Text>
+                            <Text style={styles.freqLabel}>{item.label}</Text>
+                          </Pressable>
+                        </AnimatedGlow>
+                      ))}
+                    </View>
+                  </View>
+                ) : (
+                  <FlatList
+                    data={FREQUENCIES}
+                    renderItem={({ item }) => (
+                      <FrequencyCard
+                        item={item}
+                        isSelected={selectedFreq === item.id}
+                        onSelect={() => { setSelectedFreq(item.id); previewFrequency(item.id, selectedBg); }}
+                      />
+                    )}
+                    keyExtractor={item => item.id}
+                    numColumns={3}
+                    scrollEnabled={false}
+                    columnWrapperStyle={styles.freqRow}
+                    contentContainerStyle={styles.freqList}
+                  />
+                )}
+              </View>
+            </Animated.View>
+          </View>
         )}
 
         {/* ── footer ── */}
@@ -837,10 +1052,32 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
 
+  // shared typewriter layout
+  titleCharRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+  },
+  titleWordRow: { flexDirection: "row" },
+  titleLineBreak: { width: "100%", height: 0 },
+
   // slide 0
+  pillarHeaderRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
+  pillarHeaderLeft: {
+    flex: 1,
+  },
+  pillarDecorIcon: {
+    marginLeft: 8,
+    marginTop: 4,
+    opacity: 0.6,
+  },
   questionWrap: {
-    paddingHorizontal: isSmallDevice ? 28 : 32,
-    paddingTop: isSmallDevice ? 20 : 28,
+    paddingHorizontal: HEADER_HORIZONTAL_PADDING,
+    paddingTop: HEADER_TOP_PADDING,
     paddingBottom: isSmallDevice ? 28 : 36,
     gap: 8,
   },
@@ -858,7 +1095,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   optionsArea: {
-    paddingHorizontal: isSmallDevice ? 20 : 24,
+    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
     overflow: "visible",
   },
   gridList: { overflow: "visible" },
@@ -874,6 +1111,7 @@ const styles = StyleSheet.create({
     minHeight: isSmallDevice ? 100 : 115,
     backgroundColor: "transparent",
     borderRadius: 20,
+    borderWidth: 1,
     paddingHorizontal: 8,
     paddingVertical: 12,
     alignItems: "center",
@@ -891,18 +1129,16 @@ const styles = StyleSheet.create({
   },
   cardIcon:  { marginBottom: 2 },
   cardTitle: {
-    fontFamily: Fonts.serifBold,
-    fontSize: isSmallDevice ? 14 : 16,
-    color: Colors.text,
+    fontFamily: Fonts.mono,
+    fontSize: 12,
     textAlign: "center",
-    lineHeight: 22,
   },
   spacer: { flex: 1 },
 
   // slides 1-3
   affArea: {
     flex: 1,
-    paddingHorizontal: isSmallDevice ? 20 : 24,
+    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
   },
   pillarRow: {
     flexDirection: "row",
@@ -926,6 +1162,17 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.5)",
     letterSpacing: 0.3,
     textTransform: "lowercase",
+  },
+  affDescRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  affDecorIcon: {
+    marginLeft: 12,
+    marginTop: 2,
+    opacity: 0.6,
   },
   affDesc: {
     fontSize: 13,
@@ -953,7 +1200,7 @@ const styles = StyleSheet.create({
   msgCard: {
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.18)",
-    borderRadius: 22,
+    borderRadius: 15,
     paddingVertical: isSmallDevice ? 12 : 14,
     paddingHorizontal: 18,
     backgroundColor: "rgba(255,255,255,0.04)",
@@ -980,8 +1227,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingHorizontal: HEADER_HORIZONTAL_PADDING,
+    paddingTop: HEADER_TOP_PADDING,
     paddingBottom: 12,
   },
   recBody: {
@@ -1013,7 +1260,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   trackListContent: {
-    paddingHorizontal: 14,
+    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
     paddingTop: 4,
     paddingBottom: 24,
     marginTop: 50,
@@ -1035,8 +1282,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     padding: 4,
   },
-  trackOuterActive: { opacity: 0.92 },
-  trackOuterHold:   { transform: [{ scale: 1.015 }] },
   trackInner: {
     flexDirection: "row",
     alignItems: "center",
@@ -1046,16 +1291,10 @@ const styles = StyleSheet.create({
     paddingRight: 14,
     paddingVertical: 14,
   },
-  dragHandle: {
-    width: 24,
-    height: 44,
-    alignItems: "flex-start",
-    justifyContent: "center",
-  },
   trackTextWrap: {
     flex: 1,
-    marginLeft: 6,
     marginRight: 12,
+    marginLeft: 12,
   },
   trackText: {
     fontFamily: Fonts.mono,
@@ -1081,8 +1320,8 @@ const styles = StyleSheet.create({
   // slide 5 — frequency
   freqArea: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: isSmallDevice ? 16 : 24,
+    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
+    paddingTop: HEADER_TOP_PADDING,
     gap: 16,
   },
   freqHeaderBlock: {
@@ -1111,7 +1350,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     lineHeight: 20,
   },
-  bgScroll: { flexGrow: 0, marginTop: 8, marginBottom: 8 },
+  bgScroll: { flexGrow: 0, marginTop: 8, marginBottom: 20 },
   bgList: {
     flexDirection: "row",
     alignItems: "center",

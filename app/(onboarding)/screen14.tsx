@@ -8,6 +8,7 @@ import {
   Easing,
 } from "react-native";
 import * as SecureStore from "expo-secure-store";
+import * as Haptics from "expo-haptics";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MeshGradientView } from "expo-mesh-gradient";
 import Svg, { Circle, Defs, LinearGradient, Stop } from "react-native-svg";
@@ -97,14 +98,77 @@ function LivePercent({ anim }: { anim: Animated.Value }) {
   return <Text style={styles.percentText}>{pct}%</Text>;
 }
 
+// ─── checkmark dot ────────────────────────────────────────────────────────────
+
+function CheckDot({ done }: { done: boolean }) {
+  const scale = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (done) {
+      Animated.parallel([
+        Animated.spring(scale, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 220,
+          friction: 9,
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 180,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [done]);
+
+  return (
+    <View style={dotStyles.outer}>
+      <Animated.View style={[dotStyles.fill, { opacity, transform: [{ scale }] }]}>
+        <Text style={dotStyles.check}>✓</Text>
+      </Animated.View>
+    </View>
+  );
+}
+
+const dotStyles = StyleSheet.create({
+  outer: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  fill: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#22C55E",
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  check: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 16,
+  },
+});
+
 // ─── timing: 7 messages, 18 s total ─────────────────────────────────────────
 // msgs 0-4 → 3 s each (15 s), msg 5 → 1.5 s, msg 6 → 1.5 s
 const MSG_DURATIONS = [3000, 3000, 3000, 3000, 3000, 1500, 1500];
+
+// dots only for the first 6 messages (msg 6 is the farewell "let's start")
+const DOT_COUNT = 6;
 
 export default function Screen14() {
   const { contentOpacity, fadeIn, replaceTo } = useOnboardingNav();
   const [msgIndex, setMsgIndex] = useState(0);
   const [messages, setMessages] = useState<string[]>([]);
+  const [completed, setCompleted] = useState<boolean[]>(Array(DOT_COUNT).fill(false));
   const progressAnim = useRef(new Animated.Value(0)).current;
   const percentAnim = useRef(new Animated.Value(0)).current;
   const textOpacity = useRef(new Animated.Value(0)).current;
@@ -116,9 +180,9 @@ export default function Screen14() {
       setMessages([
         `perfect ${n},\nwe're generating your\naffirmation track`,
         `let's prepare for\nyour first session`,
-        `feel free to sit or lay down\nwherever comfortable`,
-        `relax and allow the affirmations\nfrom your own voice to reprogram\nyour subconscious`,
-        `this would take\nless than a minute`,
+        `feel free to sit or lay down wherever comfortable`,
+        `relax and allow the affirmations from your own voice to reprogram your subconscious`,
+        `this would take less than a minute`,
         `ready?`,
         `let's start`,
       ]);
@@ -171,6 +235,20 @@ export default function Screen14() {
       elapsed += dur;
     });
 
+    // fire checkmarks 650ms before each of the first 6 messages ends
+    let dotElapsed = 0;
+    MSG_DURATIONS.slice(0, DOT_COUNT).forEach((dur, i) => {
+      setTimeout(() => {
+        setCompleted((prev) => {
+          const next = [...prev];
+          next[i] = true;
+          return next;
+        });
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }, dotElapsed + dur - 650);
+      dotElapsed += dur;
+    });
+
     // navigate after last message
     setTimeout(() => replaceTo("/(onboarding)/screen15"), 18000);
   }, []);
@@ -200,6 +278,11 @@ export default function Screen14() {
               <LivePercent anim={percentAnim} />
             </View>
           </View>
+          <View style={styles.dotsRow}>
+            {Array.from({ length: DOT_COUNT }).map((_, i) => (
+              <CheckDot key={i} done={completed[i]} />
+            ))}
+          </View>
         </View>
 
         {/* large serif text — bottom half */}
@@ -220,10 +303,16 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    paddingTop: 60,
   },
   ringWrapper: {
     alignItems: "center",
     justifyContent: "center",
+  },
+  dotsRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 20,
   },
   centerLabel: {
     position: "absolute",

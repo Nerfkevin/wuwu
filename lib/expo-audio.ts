@@ -47,6 +47,12 @@ export type AudioPlayer = {
   addListener?(eventName: string, cb: (...args: any[]) => void): { remove(): void };
 };
 
+export type RecordingInput = {
+  name: string;
+  type: string;
+  uid: string;
+};
+
 export type AudioRecorder = {
   uri: string | null;
   prepareToRecordAsync(options?: any): Promise<void>;
@@ -54,6 +60,9 @@ export type AudioRecorder = {
   stop(): Promise<void>;
   pause?(): void;
   getStatus?(): any;
+  getAvailableInputs?(): RecordingInput[];
+  getCurrentInput?(): Promise<RecordingInput>;
+  setInput?(inputUid: string): void;
 };
 
 export const RecordingPresets = ExpoAudio.RecordingPresets as Record<string, any>;

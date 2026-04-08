@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import {
-  Animated,
-  PanResponder,
-  StyleSheet,
-  Text,
-  View,
-  type LayoutChangeEvent,
-} from 'react-native';
+import { StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
 
 import { Colors, Fonts } from '@/constants/theme';
 
@@ -39,28 +38,47 @@ export default function TrimEditor(props: TrimEditorProps) {
   propsRef.current = props;
 
   const trackW = useRef(0);
-  const isDragging = useRef(false);
+  const isDraggingRef = useRef(false);
 
-  const leftPx = useRef(new Animated.Value(0)).current;
-  const rightPx = useRef(new Animated.Value(300)).current;
-  const scrubPx = useRef(new Animated.Value(0)).current;
+  const trackWShared = useSharedValue(0);
+  const minTrimGapRatioShared = useSharedValue(props.minTrimGapRatio);
+  const leftPx = useSharedValue(0);
+  const rightPx = useSharedValue(300);
+  const scrubPx = useSharedValue(0);
+  const snapLeft = useSharedValue(0);
+  const snapRight = useSharedValue(0);
+  const snapScrub = useSharedValue(0);
 
-  const snapLeft = useRef(0);
-  const snapRight = useRef(0);
-  const snapScrub = useRef(0);
+  const setDraggingState = useCallback((next: boolean) => {
+    isDraggingRef.current = next;
+  }, []);
 
-  const read = (av: Animated.Value) => (av as unknown as { _value: number })._value ?? 0;
+  const emitTrimDragStart = useCallback(() => {
+    propsRef.current.onTrimDragStart();
+  }, []);
+
+  const emitTrimChange = useCallback((startRatio: number, endRatio: number) => {
+    propsRef.current.onTrimChange(startRatio, endRatio);
+  }, []);
+
+  const emitScrubStart = useCallback(() => {
+    propsRef.current.onScrubStart();
+  }, []);
+
+  const emitScrubCommit = useCallback((ratio: number) => {
+    propsRef.current.onScrubCommit(ratio);
+  }, []);
 
   const syncPositions = useCallback(
     (overrideW?: number) => {
-      if (isDragging.current) return;
+      if (isDraggingRef.current) return;
       const w = overrideW ?? trackW.current;
       if (w === 0) return;
       const { trimStartRatio, trimEndRatio, playheadRatio } = propsRef.current;
-      leftPx.setValue(trimStartRatio * w);
-      rightPx.setValue(trimEndRatio * w);
+      leftPx.value = trimStartRatio * w;
+      rightPx.value = trimEndRatio * w;
       const clamped = Math.max(trimStartRatio, Math.min(trimEndRatio, playheadRatio));
-      scrubPx.setValue(clamped * w);
+      scrubPx.value = clamped * w;
     },
     [leftPx, rightPx, scrubPx],
   );
@@ -76,91 +94,127 @@ export default function TrimEditor(props: TrimEditorProps) {
     (e: LayoutChangeEvent) => {
       const w = e.nativeEvent.layout.width;
       trackW.current = w;
+      trackWShared.value = w;
+      minTrimGapRatioShared.value = propsRef.current.minTrimGapRatio;
       syncPositions(w);
     },
-    [syncPositions],
+    [minTrimGapRatioShared, syncPositions, trackWShared],
   );
 
-  // ─── PanResponders ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    minTrimGapRatioShared.value = props.minTrimGapRatio;
+  }, [minTrimGapRatioShared, props.minTrimGapRatio]);
 
-  const leftPan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        isDragging.current = true;
-        snapLeft.current = read(leftPx);
-        propsRef.current.onTrimDragStart();
-      },
-      onPanResponderMove: (_, gs) => {
-        const minGapPx = Math.max(8, propsRef.current.minTrimGapRatio * trackW.current);
-        const newLeft = Math.max(0, Math.min(read(rightPx) - minGapPx, snapLeft.current + gs.dx));
-        leftPx.setValue(newLeft);
-        if (read(scrubPx) < newLeft) scrubPx.setValue(newLeft);
-      },
-      onPanResponderRelease: () => {
-        isDragging.current = false;
-        const w = trackW.current;
-        if (w > 0) propsRef.current.onTrimChange(read(leftPx) / w, read(rightPx) / w);
-      },
-      onPanResponderTerminate: () => {
-        isDragging.current = false;
-      },
-    }),
-  ).current;
+  const leftGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .hitSlop({ top: 8, bottom: 8, left: 12, right: 12 })
+        .onBegin(() => {
+          snapLeft.value = leftPx.value;
+          runOnJS(setDraggingState)(true);
+          runOnJS(emitTrimDragStart)();
+        })
+        .onUpdate((event) => {
+          const minGapPx = Math.max(8, minTrimGapRatioShared.value * trackWShared.value);
+          const newLeft = Math.max(
+            0,
+            Math.min(rightPx.value - minGapPx, snapLeft.value + event.translationX),
+          );
+          leftPx.value = newLeft;
+          if (scrubPx.value < newLeft) scrubPx.value = newLeft;
+        })
+        .onFinalize(() => {
+          const w = trackWShared.value;
+          runOnJS(setDraggingState)(false);
+          if (w > 0) {
+            runOnJS(emitTrimChange)(leftPx.value / w, rightPx.value / w);
+          }
+        }),
+    [
+      emitTrimChange,
+      emitTrimDragStart,
+      leftPx,
+      minTrimGapRatioShared,
+      rightPx,
+      scrubPx,
+      setDraggingState,
+      snapLeft,
+      trackWShared,
+    ],
+  );
 
-  const rightPan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        isDragging.current = true;
-        snapRight.current = read(rightPx);
-        propsRef.current.onTrimDragStart();
-      },
-      onPanResponderMove: (_, gs) => {
-        const minGapPx = Math.max(8, propsRef.current.minTrimGapRatio * trackW.current);
-        const newRight = Math.min(
-          trackW.current,
-          Math.max(read(leftPx) + minGapPx, snapRight.current + gs.dx),
-        );
-        rightPx.setValue(newRight);
-        if (read(scrubPx) > newRight) scrubPx.setValue(newRight);
-      },
-      onPanResponderRelease: () => {
-        isDragging.current = false;
-        const w = trackW.current;
-        if (w > 0) propsRef.current.onTrimChange(read(leftPx) / w, read(rightPx) / w);
-      },
-      onPanResponderTerminate: () => {
-        isDragging.current = false;
-      },
-    }),
-  ).current;
+  const rightGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .hitSlop({ top: 8, bottom: 8, left: 12, right: 12 })
+        .onBegin(() => {
+          snapRight.value = rightPx.value;
+          runOnJS(setDraggingState)(true);
+          runOnJS(emitTrimDragStart)();
+        })
+        .onUpdate((event) => {
+          const minGapPx = Math.max(8, minTrimGapRatioShared.value * trackWShared.value);
+          const newRight = Math.min(
+            trackWShared.value,
+            Math.max(leftPx.value + minGapPx, snapRight.value + event.translationX),
+          );
+          rightPx.value = newRight;
+          if (scrubPx.value > newRight) scrubPx.value = newRight;
+        })
+        .onFinalize(() => {
+          const w = trackWShared.value;
+          runOnJS(setDraggingState)(false);
+          if (w > 0) {
+            runOnJS(emitTrimChange)(leftPx.value / w, rightPx.value / w);
+          }
+        }),
+    [
+      emitTrimChange,
+      emitTrimDragStart,
+      leftPx,
+      minTrimGapRatioShared,
+      rightPx,
+      scrubPx,
+      setDraggingState,
+      snapRight,
+      trackWShared,
+    ],
+  );
 
-  const scrubPan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        isDragging.current = true;
-        snapScrub.current = read(scrubPx);
-        propsRef.current.onScrubStart();
-      },
-      onPanResponderMove: (_, gs) => {
-        const newScrub = Math.max(
-          read(leftPx),
-          Math.min(read(rightPx), snapScrub.current + gs.dx),
-        );
-        scrubPx.setValue(newScrub);
-      },
-      onPanResponderRelease: () => {
-        isDragging.current = false;
-        const w = trackW.current;
-        if (w > 0) propsRef.current.onScrubCommit(read(scrubPx) / w);
-      },
-      onPanResponderTerminate: () => {
-        isDragging.current = false;
-      },
-    }),
-  ).current;
+  const scrubGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .hitSlop({ top: 8, bottom: 8, left: 12, right: 12 })
+        .onBegin(() => {
+          snapScrub.value = scrubPx.value;
+          runOnJS(setDraggingState)(true);
+          runOnJS(emitScrubStart)();
+        })
+        .onUpdate((event) => {
+          const newScrub = Math.max(
+            leftPx.value,
+            Math.min(rightPx.value, snapScrub.value + event.translationX),
+          );
+          scrubPx.value = newScrub;
+        })
+        .onFinalize(() => {
+          const w = trackWShared.value;
+          runOnJS(setDraggingState)(false);
+          if (w > 0) {
+            runOnJS(emitScrubCommit)(scrubPx.value / w);
+          }
+        }),
+    [
+      emitScrubCommit,
+      emitScrubStart,
+      leftPx,
+      rightPx,
+      scrubPx,
+      setDraggingState,
+      snapScrub,
+      trackWShared,
+    ],
+  );
 
   // ─── Derived display values ──────────────────────────────────────────────────
 
@@ -170,7 +224,31 @@ export default function TrimEditor(props: TrimEditorProps) {
   const trimmedDuration = trimEndTime - trimStartTime;
   const playheadTime = dur * Math.max(trimStartRatio, Math.min(trimEndRatio, playheadRatio));
 
-  const selectionWidth = Animated.subtract(rightPx, leftPx);
+  const leftShadeStyle = useAnimatedStyle(() => ({
+    width: leftPx.value,
+  }));
+
+  const rightShadeStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: rightPx.value }],
+    width: Math.max(0, trackWShared.value - rightPx.value),
+  }));
+
+  const selectionStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: leftPx.value }],
+    width: Math.max(0, rightPx.value - leftPx.value),
+  }));
+
+  const scrubberStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: scrubPx.value - 1 }],
+  }));
+
+  const leftHandleStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: leftPx.value - HANDLE_W / 2 }],
+  }));
+
+  const rightHandleStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: rightPx.value - HANDLE_W / 2 }],
+  }));
 
   // Ruler markers — vertically centred, major every 4th tick
   const markers = useMemo(() => {
@@ -219,41 +297,37 @@ export default function TrimEditor(props: TrimEditorProps) {
           ))}
 
           {/* Shade outside selection */}
-          <Animated.View style={[styles.shade, { left: 0, width: leftPx }]} />
-          <Animated.View style={[styles.shade, { left: rightPx, right: 0 }]} />
+          <Animated.View style={[styles.shade, leftShadeStyle]} />
+          <Animated.View style={[styles.shade, rightShadeStyle]} />
 
           {/* Selection bracket (top + bottom border) */}
-          <Animated.View style={[styles.selection, { left: leftPx, width: selectionWidth }]} />
+          <Animated.View style={[styles.selection, selectionStyle]} />
         </View>
 
         {/* ── Floating layer: scrubber + handles (not clipped) ── */}
 
         {/* Scrubber */}
-        <Animated.View
-          hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
-          style={[styles.scrubber, { left: Animated.subtract(scrubPx, 1) }]}
-          {...scrubPan.panHandlers}
-        />
+        <GestureDetector gesture={scrubGesture}>
+          <Animated.View style={[styles.scrubber, scrubberStyle]} />
+        </GestureDetector>
 
         {/* Left handle */}
-        <Animated.View
-          style={[styles.handle, { left: Animated.subtract(leftPx, HANDLE_W / 2) }]}
-          {...leftPan.panHandlers}
-        >
-          <View style={styles.grip} />
-          <View style={styles.grip} />
-          <View style={styles.grip} />
-        </Animated.View>
+        <GestureDetector gesture={leftGesture}>
+          <Animated.View style={[styles.handle, leftHandleStyle]}>
+            <View style={styles.grip} />
+            <View style={styles.grip} />
+            <View style={styles.grip} />
+          </Animated.View>
+        </GestureDetector>
 
         {/* Right handle */}
-        <Animated.View
-          style={[styles.handle, { left: Animated.subtract(rightPx, HANDLE_W / 2) }]}
-          {...rightPan.panHandlers}
-        >
-          <View style={styles.grip} />
-          <View style={styles.grip} />
-          <View style={styles.grip} />
-        </Animated.View>
+        <GestureDetector gesture={rightGesture}>
+          <Animated.View style={[styles.handle, rightHandleStyle]}>
+            <View style={styles.grip} />
+            <View style={styles.grip} />
+            <View style={styles.grip} />
+          </Animated.View>
+        </GestureDetector>
       </View>
 
       <View style={styles.timesRow}>
