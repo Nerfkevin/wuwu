@@ -29,8 +29,7 @@ export async function recordPlaybackSession(elapsedMs: number): Promise<void> {
   ]);
 }
 
-/** Whole hours for the stat tile (floor). */
+/** Hours with one decimal for the stat tile. */
 export function formatHoursPlayed(totalPlayMs: number): string {
-  const h = Math.floor(totalPlayMs / 3_600_000);
-  return String(h);
+  return (totalPlayMs / 3_600_000).toFixed(1);
 }

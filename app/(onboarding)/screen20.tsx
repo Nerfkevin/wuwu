@@ -68,7 +68,7 @@ const COMMITMENTS = [
   "manifest my abundant self daily",
 ];
 
-const PAD_HEIGHT = isSmallDevice ? 150 : 190;
+const PAD_HEIGHT = isSmallDevice ? 110 : 140;
 
 export default function Screen20() {
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();

@@ -4,7 +4,7 @@ import { Animated, Dimensions, Easing, Pressable, StyleSheet, Text, View } from 
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
 import { Colors, Fonts } from '@/constants/theme';
@@ -14,8 +14,25 @@ import StreakPill from '@/components/StreakPill';
 const { width } = Dimensions.get('window');
 const BUTTON_SIZE = width * 0.55;
 
+function ordinal(n: number) {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
+}
+
+function formatDate(d: Date) {
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const months = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  return `${days[d.getDay()]}, ${ordinal(d.getDate())} ${months[d.getMonth()]}`;
+}
+
+const TAB_BAR_H = 15;
+
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const todayLabel = formatDate(new Date());
   const [glowState, setGlowState] = useState<GlowEvent>('default');
   const [pressing, setPressing] = useState(false);
   const [activated, setActivated] = useState(false);
@@ -125,7 +142,7 @@ export default function HomeScreen() {
       />
       <View style={styles.titleContainer}>
         <Text style={styles.title}>Wu-Wu</Text>
-        <StreakPill />
+        <Text style={styles.dateLabel}>{todayLabel}</Text>
       </View>
 
       <View style={styles.content}>
@@ -182,6 +199,11 @@ export default function HomeScreen() {
         style={styles.bottomGradient}
         pointerEvents="none"
       />
+
+      {/* Streak pill floating above tab bar */}
+      <View style={[styles.streakPillWrapper, { bottom: insets.bottom + TAB_BAR_H + 12 }]}>
+        <StreakPill />
+      </View>
     </SafeAreaView>
   );
 }
@@ -193,7 +215,7 @@ const styles = StyleSheet.create({
   },
   titleContainer: {
     position: 'absolute',
-    top: 0,
+    top: 10,
     left: 0,
     right: 0,
     alignItems: 'center',
@@ -238,5 +260,17 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 100,
+  },
+  dateLabel: {
+    fontFamily: Fonts.mono,
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.46)',
+    letterSpacing: 0.5,
+  },
+  streakPillWrapper: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
   },
 });

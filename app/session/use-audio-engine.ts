@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AudioBuffer, AudioContext } from '@/lib/audio-api-core';
 import * as Haptics from 'expo-haptics';
@@ -11,6 +12,7 @@ import {
   AFFIRMATION_DEFAULT_VOLUME_PERCENT,
   AMBIENT_VOLUME,
   NOISE_AMBIENT_GAIN_MULTIPLIER,
+  MONEY_AMBIENT_GAIN_MULTIPLIER,
   BINAURAL_BEATS,
   NOISE_IDS,
   NATURE_SOUNDS,
@@ -18,6 +20,12 @@ import {
   AmbientNode,
   affirmationPercentToGain,
 } from './playback-constants';
+
+const getAmbientGainMul = (id: AmbientSoundId) => {
+  if (NOISE_IDS.has(id)) return NOISE_AMBIENT_GAIN_MULTIPLIER;
+  if (id === 'money') return MONEY_AMBIENT_GAIN_MULTIPLIER;
+  return 1;
+};
 
 const triggerHaptic = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
@@ -44,7 +52,7 @@ export function useAudioEngine({
   const [isOscMuted, setIsOscMuted] = useState(false);
   const [activeAmbientSounds, setActiveAmbientSounds] = useState<Set<AmbientSoundId>>(new Set());
   const [volume, setVolume] = useState(AFFIRMATION_DEFAULT_VOLUME_PERCENT);
-  const [ambientVolume, setAmbientVolume] = useState(1);
+  const [ambientVolumes, setAmbientVolumes] = useState<Partial<Record<AmbientSoundId, number>>>({});
   const [recordings, setRecordings] = useState<SavedRecording[]>([]);
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
   const [completedSetCount, setCompletedSetCount] = useState(0);
@@ -63,7 +71,7 @@ export function useAudioEngine({
   const nextTrackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const affirmationVolumeRef = useRef(affirmationPercentToGain(AFFIRMATION_DEFAULT_VOLUME_PERCENT));
-  const ambientVolumeRef = useRef(1);
+  const ambientVolumesRef = useRef<Partial<Record<AmbientSoundId, number>>>({});
   const sessionElapsedMsRef = useRef(0);
   const sessionStartedAtRef = useRef<number | null>(null);
   const recordingsRef = useRef<SavedRecording[]>([]);
@@ -288,10 +296,10 @@ export function useAudioEngine({
       }
     }
     const gain = ctx.createGain();
-    const noiseMul = NOISE_IDS.has(id) ? NOISE_AMBIENT_GAIN_MULTIPLIER : 1;
+    const noiseMul = getAmbientGainMul(id);
     gain.gain.setValueAtTime(0, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(
-      AMBIENT_VOLUME * noiseMul * ambientVolumeRef.current,
+      AMBIENT_VOLUME * noiseMul * (ambientVolumesRef.current[id] ?? 1),
       ctx.currentTime + 0.05,
     );
     gain.connect(ctx.destination);
@@ -491,20 +499,21 @@ export function useAudioEngine({
     if (affirmationGainRef.current) affirmationGainRef.current.gain.value = nextGain;
   }, []);
 
-  const updateAmbientVolume = useCallback((progress: number) => {
+  const updateAmbientVolume = useCallback((id: AmbientSoundId, progress: number) => {
     const clamped = Math.max(0, Math.min(1, progress));
-    ambientVolumeRef.current = clamped;
-    setAmbientVolume(clamped);
+    ambientVolumesRef.current = { ...ambientVolumesRef.current, [id]: clamped };
+    setAmbientVolumes((prev) => ({ ...prev, [id]: clamped }));
     const ctx = audioCtxRef.current;
-    for (const [id, { gain }] of ambientNodesRef.current) {
-      const noiseMul = NOISE_IDS.has(id) ? NOISE_AMBIENT_GAIN_MULTIPLIER : 1;
+    const node = ambientNodesRef.current.get(id);
+    if (node) {
+      const noiseMul = getAmbientGainMul(id);
       const target = AMBIENT_VOLUME * noiseMul * clamped;
       if (ctx) {
         const now = ctx.currentTime;
-        gain.gain.cancelScheduledValues(now);
-        gain.gain.setValueAtTime(target, now);
+        node.gain.gain.cancelScheduledValues(now);
+        node.gain.gain.setValueAtTime(target, now);
       } else {
-        gain.gain.value = target;
+        node.gain.gain.value = target;
       }
     }
   }, []);
@@ -559,6 +568,30 @@ export function useAudioEngine({
   // ─── Effects ──────────────────────────────────────────────────────────────
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
   useEffect(() => { activeAmbientSoundsRef.current = activeAmbientSounds; }, [activeAmbientSounds]);
+
+  // Load saved ambient prefs once on mount
+  useEffect(() => {
+    AsyncStorage.getItem('ambient_prefs').then((raw) => {
+      if (!raw) return;
+      try {
+        const data = JSON.parse(raw) as { activeIds?: string[]; volumes?: Partial<Record<AmbientSoundId, number>> };
+        if (data.activeIds?.length) {
+          setActiveAmbientSounds(new Set(data.activeIds as AmbientSoundId[]));
+        }
+        if (data.volumes) {
+          ambientVolumesRef.current = data.volumes;
+          setAmbientVolumes(data.volumes);
+        }
+      } catch { /* ignore */ }
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist ambient prefs whenever they change
+  useEffect(() => {
+    const data = { activeIds: [...activeAmbientSounds], volumes: ambientVolumes };
+    AsyncStorage.setItem('ambient_prefs', JSON.stringify(data)).catch(() => {});
+  }, [activeAmbientSounds, ambientVolumes]);
 
   useEffect(() => {
     recordingsRef.current = recordings;
@@ -628,7 +661,7 @@ export function useAudioEngine({
     toggleOscMute,
     toggleAmbientSound,
     updateVolume,
-    ambientVolume,
+    ambientVolumes,
     updateAmbientVolume,
   };
 }

@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Background from 'react-native-ambient-background';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
-import { recordPlaybackSession } from '@/lib/profile-stats';
+import { getProfileStats, recordPlaybackSession } from '@/lib/profile-stats';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -25,6 +25,7 @@ import { GlowPresets } from '@/constants/glow';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAudioEngine } from './use-audio-engine';
 import AmbientModal from './ambient-modal';
+import MakeItRain from './make-it-rain';
 import {
   height,
   AFFIRMATION_DEFAULT_VOLUME_PERCENT,
@@ -66,7 +67,7 @@ export default function PlaybackScreen() {
     isPlaying, isBowlMuted, isOscMuted, activeAmbientSounds,
     volume, recordings, currentTrackIndex, completedSetCount, sessionElapsedMs,
     handlePlayToggle, stopSession, toggleBowlMute, toggleOscMute,
-    toggleAmbientSound, updateVolume, ambientVolume, updateAmbientVolume,
+    toggleAmbientSound, updateVolume, ambientVolumes, updateAmbientVolume,
   } = useAudioEngine({
     selectedBowlAudio,
     selectedFrequency,
@@ -206,6 +207,8 @@ export default function PlaybackScreen() {
     ],
   }), [cardColorRange.from, cardColorRange.to]);
 
+  const makeItRainActive = activeAmbientSounds.has('money');
+
   // ─── Derived display values ───────────────────────────────────────────────
   const totalMessages = recordings.length;
   const progressLabel =
@@ -220,8 +223,19 @@ export default function PlaybackScreen() {
   const oscIconColor = !isOscMuted ? selectedColor : Colors.textSecondary;
   const oscIconName = !isOscMuted ? 'volume-high' : 'volume-mute';
 
-  const handleFinish = () => {
-    router.back();
+  const handleFinish = async () => {
+    const prevStats = await getProfileStats();
+    const ms = stopSession();
+    statsRecordedRef.current = true;
+    if (ms > 0) await recordPlaybackSession(ms);
+    router.replace({
+      pathname: '/session/complete',
+      params: {
+        prevTotalMs: String(prevStats.totalPlayMs),
+        sessionMs: String(Math.max(0, ms)),
+        prevSessionCount: String(prevStats.sessionCount),
+      },
+    });
   };
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -360,7 +374,7 @@ export default function PlaybackScreen() {
 
           {/* Footer */}
           <View style={styles.footer}>
-            <Pressable onPress={() => { void handleFinish(); }} onPressIn={() => triggerHaptic()}>
+            <Pressable onPress={() => { void handleFinish(); }} onPressIn={triggerHaptic}>
               <Text style={styles.finishText}>Finish Session</Text>
             </Pressable>
             <View style={styles.volumeContainer}>
@@ -392,9 +406,11 @@ export default function PlaybackScreen() {
         onClose={() => setShowAmbientModal(false)}
         activeAmbientSounds={activeAmbientSounds}
         onToggle={(id) => { void toggleAmbientSound(id); }}
-        ambientVolume={ambientVolume}
+        ambientVolumes={ambientVolumes}
         onAmbientVolumeChange={updateAmbientVolume}
       />
+
+      {makeItRainActive && isPlaying && <MakeItRain />}
     </GestureHandlerRootView>
   );
 }
@@ -402,10 +418,10 @@ export default function PlaybackScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   safeArea: { flex: 1, paddingHorizontal: 24, justifyContent: 'space-between' },
-  brandTitleWrap: { alignItems: 'center', marginTop: 2, marginBottom: 2 },
+  brandTitleWrap: { alignItems: 'center', marginTop: -5, marginBottom: 5 },
   brandTitle: {
     fontFamily: Fonts.serif,
-    fontSize: 26,
+    fontSize: 32,
     color: Colors.text,
     letterSpacing: 0.5,
   },

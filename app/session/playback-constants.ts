@@ -43,7 +43,8 @@ export const BRAINWAVE_LABELS: Record<string, string> = {
 
 export type AmbientSoundId =
   | 'rain' | 'thunder' | 'ocean' | 'birds' | 'crickets' | 'campfire'
-  | 'white' | 'pink' | 'brown';
+  | 'white' | 'pink' | 'brown'
+  | 'money';
 
 export type AmbientNode = {
   source: ReturnType<AudioContext['createBufferSource']>;
@@ -51,14 +52,19 @@ export type AmbientNode = {
 };
 
 export const NOISE_IDS = new Set<AmbientSoundId>(['white', 'pink', 'brown']);
+/** Sounds that are visual effects — excluded from the Nature grid in the modal. */
+export const VISUAL_SOUND_IDS = new Set<AmbientSoundId>(['money']);
+/** Lower gain for the money counting sound so it doesn't overpower other audio. */
+export const MONEY_AMBIENT_GAIN_MULTIPLIER = 0.28;
 
 export const NATURE_SOUNDS: Array<{ id: AmbientSoundId; label: string; asset: number | null }> = [
-  { id: 'rain',     label: 'Rain',        asset: require('../../assets/images/ambient/rain.mp3') },
-  { id: 'thunder',  label: 'Thunder',     asset: require('../../assets/images/ambient/thunder.mp3') },
-  { id: 'ocean',    label: 'Ocean Waves', asset: require('../../assets/images/ambient/ocean.mp3') },
-  { id: 'birds',    label: 'Birds',       asset: require('../../assets/images/ambient/birds.mp3') },
-  { id: 'crickets', label: 'Crickets',    asset: require('../../assets/images/ambient/crickets.mp3') },
-  { id: 'campfire', label: 'Camp Fire',   asset: require('../../assets/images/ambient/campfire.mp3') },
+  { id: 'rain',     label: 'Rain',          asset: require('../../assets/images/ambient/rain.mp3') },
+  { id: 'thunder',  label: 'Thunder',       asset: require('../../assets/images/ambient/thunder.mp3') },
+  { id: 'ocean',    label: 'Ocean Waves',   asset: require('../../assets/images/ambient/ocean.mp3') },
+  { id: 'birds',    label: 'Birds',         asset: require('../../assets/images/ambient/birds.mp3') },
+  { id: 'crickets', label: 'Crickets',      asset: require('../../assets/images/ambient/crickets.mp3') },
+  { id: 'campfire', label: 'Camp Fire',     asset: require('../../assets/images/ambient/campfire.mp3') },
+  { id: 'money',    label: 'Make it Rain',  asset: require('../../assets/images/moneycount.mp3') },
 ];
 
 export const NOISE_SOUNDS: Array<{ id: AmbientSoundId; label: string }> = [

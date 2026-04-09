@@ -69,13 +69,14 @@ export default function RootLayout() {
           <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="session/selection" options={{ title: 'Choose Soundscape', headerShown: false, presentation: 'card', animation: 'fade' }} />
-          <Stack.Screen name="session/playback" options={{ title: 'Session', headerShown: false, presentation: 'fullScreenModal' }} />
+          <Stack.Screen name="session/playback" options={{ title: 'Session', headerShown: false, presentation: 'fullScreenModal', animation: 'fade' }} />
           <Stack.Screen name="add/pillar" options={{ title: 'Select Affirmation Pillar', headerShown: false, presentation: 'card', animation: 'fade' }} />
           <Stack.Screen name="add/affirmation" options={{ title: 'Select Affirmation', headerShown: false, presentation: 'card' }} />
           <Stack.Screen name="add/write" options={{ title: 'Write Affirmation', headerShown: false, presentation: 'modal', gestureEnabled: false }} />
           <Stack.Screen name="add/record" options={{ title: 'Record', headerShown: false, presentation: 'modal', gestureEnabled: false }} />
           <Stack.Screen name="add/recording" options={{ title: 'Record', headerShown: false, presentation: 'modal', gestureEnabled: false, animation: 'fade' }} />
           <Stack.Screen name="add/review" options={{ title: 'Review', headerShown: false, presentation: 'modal', gestureEnabled: false }} />
+          <Stack.Screen name="session/complete" options={{ headerShown: false, presentation: 'transparentModal', animation: 'none' }} />
           <Stack.Screen name="streak" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'fade' }} />
         </Stack>
         <StatusBar style="light" />

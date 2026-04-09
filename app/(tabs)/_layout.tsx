@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { NativeTabs, Icon, Label, VectorIcon } from 'expo-router/unstable-native-tabs';
-import { Ionicons } from '@expo/vector-icons';
+import { NativeTabs } from 'expo-router/unstable-native-tabs';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSegments } from 'expo-router';
 import { Colors } from '@/constants/theme';
 import * as Haptics from 'expo-haptics';
@@ -29,41 +29,41 @@ export default function TabLayout() {
     <>
       <NativeTabBarHaptics />
       <NativeTabs
-      tintColor={Colors.tint}
-      backgroundColor={Colors.background}
-      iconColor={{
-        default: Colors.tabIconDefault,
-        selected: Colors.tabIconSelected,
-      }}
-      labelStyle={{
-        default: { color: Colors.tabIconDefault },
-        selected: { color: Colors.tabIconSelected },
-      }}
-    >
-      <NativeTabs.Trigger name="index">
-        <Icon 
-          sf="house.fill" 
-          androidSrc={<VectorIcon family={Ionicons} name="home" />} 
-        />
-        <Label>Home</Label>
-      </NativeTabs.Trigger>
-      
-      <NativeTabs.Trigger name="library">
-        <Icon 
-          sf="books.vertical.fill" 
-          androidSrc={<VectorIcon family={Ionicons} name="library" />} 
-        />
-        <Label>Track</Label>
-      </NativeTabs.Trigger>
-      
-      <NativeTabs.Trigger name="profile">
-        <Icon 
-          sf="person.fill" 
-          androidSrc={<VectorIcon family={Ionicons} name="person" />} 
-        />
-        <Label>Profile</Label>
-      </NativeTabs.Trigger>
-    </NativeTabs>
+        tintColor={Colors.tint}
+        backgroundColor={Colors.background}
+        iconColor={{
+          default: Colors.tabIconDefault,
+          selected: Colors.tabIconSelected,
+        }}
+        labelStyle={{
+          default: { color: Colors.tabIconDefault },
+          selected: { color: Colors.tabIconSelected },
+        }}
+      >
+        <NativeTabs.Trigger name="index">
+          <NativeTabs.Trigger.Icon
+            sf="house.fill"
+            src={<NativeTabs.Trigger.VectorIcon family={Ionicons} name="home" />}
+          />
+          <NativeTabs.Trigger.Label>Wu-Wu</NativeTabs.Trigger.Label>
+        </NativeTabs.Trigger>
+
+        <NativeTabs.Trigger name="library">
+          <NativeTabs.Trigger.Icon
+            sf="books.vertical.fill"
+            src={<NativeTabs.Trigger.VectorIcon family={Ionicons} name="library" />}
+          />
+          <NativeTabs.Trigger.Label>Track</NativeTabs.Trigger.Label>
+        </NativeTabs.Trigger>
+
+        <NativeTabs.Trigger name="profile">
+          <NativeTabs.Trigger.Icon
+            sf="person.fill"
+            src={<NativeTabs.Trigger.VectorIcon family={Ionicons} name="person" />}
+          />
+          <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
+        </NativeTabs.Trigger>
+      </NativeTabs>
     </>
   );
 }

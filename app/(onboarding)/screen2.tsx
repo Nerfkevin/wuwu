@@ -318,7 +318,11 @@ export default function Screen2() {
             >
               <Image
                 source={slide.image}
-                style={styles.image}
+                style={[
+                  styles.image,
+                  slide.id === "1" && { width: "85%", height: "85%", alignSelf: "center" },
+                  slide.id === "2" && { width: "70%", height: "70%", alignSelf: "center" },
+                ]}
                 resizeMode="contain"
               />
             </Animated.View>

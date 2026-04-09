@@ -42,5 +42,6 @@ const styles = StyleSheet.create({
     color: '#ff6b3d',
     fontFamily: Fonts.mono,
     letterSpacing: 0.3,
+    marginBottom: 3.5,
   },
 });

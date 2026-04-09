@@ -18,7 +18,7 @@ import { Fonts } from '@/constants/theme';
 
 const { width } = Dimensions.get('window');
 const isSmallDevice = width < 380;
-const SIGNATURE_PAD_HEIGHT = isSmallDevice ? 150 : 190;
+const SIGNATURE_PAD_HEIGHT = isSmallDevice ? 110 : 140;
 
 const BG_COLORS = [
   '#3d0000', '#7a0000', '#2a0000',

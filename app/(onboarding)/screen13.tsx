@@ -32,6 +32,7 @@ import {
   configureMixedPlaybackAsync,
 } from "@/lib/audio-playback";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { LinearGradient } from "expo-linear-gradient";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -96,7 +97,7 @@ const FREQ_ITEM_RADIUS = 24;
 const FREQ_GRID_HEIGHT = FREQ_ITEM_SIZE * 3 + 12 * 2;
 
 const FREQUENCIES = [
-  { id: "174", hz: "174 Hz", label: "Pain",      color: Colors.chakra.red    },
+  { id: "174", hz: "174 Hz", label: "Pain",       color: Colors.chakra.red    },
   { id: "285", hz: "285 Hz", label: "Rejuvenate", color: Colors.chakra.orange },
   { id: "396", hz: "396 Hz", label: "Fear",       color: Colors.chakra.yellow },
   { id: "417", hz: "417 Hz", label: "Trauma",     color: Colors.chakra.green  },
@@ -174,26 +175,108 @@ function FrequencyCard({
   onSelect: () => void;
 }) {
   const [glowState, setGlowState] = useState<GlowEvent>("default");
+  const scaleAnim = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     setGlowState(isSelected ? "press" : "default");
   }, [isSelected]);
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, { toValue: 0.92, useNativeDriver: true, speed: 60, bounciness: 0 }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 6 }).start();
+  };
   return (
-    <AnimatedGlow
-      preset={GlowPresets.vaporwave(FREQ_ITEM_RADIUS, item.color)}
-      activeState={glowState}
-    >
-      <Pressable
-        style={[
-          styles.freqCard,
-          { borderColor: item.color },
-          isSelected && { backgroundColor: item.color + "20" },
-        ]}
-        onPress={onSelect}
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <AnimatedGlow
+        preset={GlowPresets.vaporwave(FREQ_ITEM_RADIUS, item.color)}
+        activeState={glowState}
       >
-        <Text style={styles.freqHz}>{item.hz}</Text>
-        <Text style={styles.freqLabel}>{item.label}</Text>
+        <Pressable
+          style={[
+            styles.freqCard,
+            { borderColor: item.color },
+            isSelected && { backgroundColor: item.color + "20" },
+          ]}
+          onPress={onSelect}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+        >
+          <Text style={styles.freqHz}>{item.hz}</Text>
+          <Text style={styles.freqLabel}>{item.label}</Text>
+        </Pressable>
+      </AnimatedGlow>
+    </Animated.View>
+  );
+}
+
+function BrainwaveCard({
+  item,
+  isSelected,
+  onSelect,
+}: {
+  item: (typeof BRAINWAVES)[0];
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, { toValue: 0.92, useNativeDriver: true, speed: 60, bounciness: 0 }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 6 }).start();
+  };
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <AnimatedGlow
+        preset={GlowPresets.vaporwave(FREQ_ITEM_RADIUS, item.color)}
+        activeState={isSelected ? "press" : "default"}
+      >
+        <Pressable
+          style={[
+            styles.freqCard,
+            { borderColor: item.color },
+            isSelected && { backgroundColor: item.color + "20" },
+          ]}
+          onPress={onSelect}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+        >
+          <Text style={styles.freqHz}>{item.name}</Text>
+          <Text style={styles.freqBrainHz}>{item.hz}</Text>
+          <Text style={styles.freqLabel}>{item.label}</Text>
+        </Pressable>
+      </AnimatedGlow>
+    </Animated.View>
+  );
+}
+
+function BgButton({
+  bg,
+  isSelected,
+  onPress,
+}: {
+  bg: string;
+  isSelected: boolean;
+  onPress: () => void;
+}) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, { toValue: 0.92, useNativeDriver: true, speed: 60, bounciness: 0 }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 6 }).start();
+  };
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <Pressable
+        style={[styles.bgItem, isSelected && styles.bgItemSelected]}
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+      >
+        <Text style={[styles.bgText, isSelected && styles.bgTextSelected]}>{bg}</Text>
       </Pressable>
-    </AnimatedGlow>
+    </Animated.View>
   );
 }
 
@@ -903,6 +986,7 @@ export default function Screen13() {
         {/* ── slide 5: frequency selection ── */}
         {activeIndex === 5 && (
           <View style={styles.freqArea}>
+            <View style={styles.freqHeaderPadded}>
             <View style={styles.freqHeaderBlock}>
               <View style={styles.freqHeaderLeft}>
                 <View style={styles.titleCharRow}>
@@ -929,6 +1013,7 @@ export default function Screen13() {
                 <Ionicons name="pulse" size={48} color={Colors.textSecondary} style={styles.freqDecorIcon} />
               </Animated.View>
             </View>
+            </View>
 
             <Animated.View style={{ opacity: fadeFreq }}>
               <ScrollView
@@ -938,61 +1023,53 @@ export default function Screen13() {
                 style={styles.bgScroll}
               >
                 {BG_OPTIONS.map(bg => (
-                  <TouchableOpacity
+                  <BgButton
                     key={bg}
-                    style={[styles.bgItem, selectedBg === bg && styles.bgItemSelected]}
+                    bg={bg}
+                    isSelected={selectedBg === bg}
                     onPress={() => { stopPreview(); setSelectedBg(bg); }}
-                  >
-                    <Text style={[styles.bgText, selectedBg === bg && styles.bgTextSelected]}>{bg}</Text>
-                  </TouchableOpacity>
+                  />
                 ))}
               </ScrollView>
 
+              <View style={styles.bgDividerRow}>
+                <LinearGradient
+                  colors={[
+                    "rgba(200, 200, 205, 0)",
+                    "rgba(200, 200, 205, 0.35)",
+                    "rgba(220, 220, 225, 0.85)",
+                    "rgba(200, 200, 205, 0.35)",
+                    "rgba(200, 200, 205, 0)",
+                  ]}
+                  locations={[0, 0.22, 0.5, 0.78, 1]}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={styles.bgDividerGradient}
+                />
+              </View>
+
+              <View style={styles.freqGridSection}>
               <View style={[styles.freqGridContainer, { height: FREQ_GRID_HEIGHT }]}>
                 {selectedBg === "Brainwaves" ? (
                   <View style={styles.freqList}>
                     <View style={styles.freqRow}>
                       {BRAINWAVES.slice(0, 3).map(item => (
-                        <AnimatedGlow
+                        <BrainwaveCard
                           key={item.id}
-                          preset={GlowPresets.vaporwave(FREQ_ITEM_RADIUS, item.color)}
-                          activeState={selectedBrainwave === item.id ? "press" : "default"}
-                        >
-                          <Pressable
-                            style={[
-                              styles.freqCard,
-                              { borderColor: item.color },
-                              selectedBrainwave === item.id && { backgroundColor: item.color + "20" },
-                            ]}
-                            onPress={() => { setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
-                          >
-                            <Text style={styles.freqHz}>{item.name}</Text>
-                            <Text style={styles.freqBrainHz}>{item.hz}</Text>
-                            <Text style={styles.freqLabel}>{item.label}</Text>
-                          </Pressable>
-                        </AnimatedGlow>
+                          item={item}
+                          isSelected={selectedBrainwave === item.id}
+                          onSelect={() => { setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
+                        />
                       ))}
                     </View>
                     <View style={[styles.freqRow, { justifyContent: "center" }]}>
                       {BRAINWAVES.slice(3).map(item => (
-                        <AnimatedGlow
+                        <BrainwaveCard
                           key={item.id}
-                          preset={GlowPresets.vaporwave(FREQ_ITEM_RADIUS, item.color)}
-                          activeState={selectedBrainwave === item.id ? "press" : "default"}
-                        >
-                          <Pressable
-                            style={[
-                              styles.freqCard,
-                              { borderColor: item.color },
-                              selectedBrainwave === item.id && { backgroundColor: item.color + "20" },
-                            ]}
-                            onPress={() => { setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
-                          >
-                            <Text style={styles.freqHz}>{item.name}</Text>
-                            <Text style={styles.freqBrainHz}>{item.hz}</Text>
-                            <Text style={styles.freqLabel}>{item.label}</Text>
-                          </Pressable>
-                        </AnimatedGlow>
+                          item={item}
+                          isSelected={selectedBrainwave === item.id}
+                          onSelect={() => { setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
+                        />
                       ))}
                     </View>
                   </View>
@@ -1013,6 +1090,7 @@ export default function Screen13() {
                     contentContainerStyle={styles.freqList}
                   />
                 )}
+              </View>
               </View>
             </Animated.View>
           </View>
@@ -1320,9 +1398,14 @@ const styles = StyleSheet.create({
   // slide 5 — frequency
   freqArea: {
     flex: 1,
-    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
     paddingTop: HEADER_TOP_PADDING,
     gap: 16,
+  },
+  freqHeaderPadded: {
+    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
+  },
+  freqGridSection: {
+    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
   },
   freqHeaderBlock: {
     flexDirection: "row",
@@ -1350,23 +1433,43 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     lineHeight: 20,
   },
-  bgScroll: { flexGrow: 0, marginTop: 8, marginBottom: 20 },
+  bgScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+    marginTop: 8,
+    marginBottom: 0,
+    alignSelf: "stretch",
+  },
+  bgDividerRow: {
+    width: "100%",
+    marginTop: 2,
+    marginBottom: 18,
+  },
+  bgDividerGradient: {
+    height: 2,
+    width: "100%",
+    borderRadius: 1,
+  },
   bgList: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    flexGrow: 1,
     gap: 10,
-    paddingHorizontal: 2,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
   bgItem: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 24,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: Colors.textSecondary,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
   bgItemSelected: {
-    borderColor: Colors.text,
-    backgroundColor: "#333",
+    borderColor: Colors.chakra.violet,
+    backgroundColor: "rgba(139,92,246,0.18)",
   },
   bgText: {
     fontFamily: Fonts.mono,

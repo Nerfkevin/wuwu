@@ -114,17 +114,23 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.statsContainer}>
-        <View style={styles.statItem}>
-          <Text style={styles.statNumber}>{hoursPlayed}</Text>
-          <Text style={styles.statLabel}>Hours Played</Text>
+        <View style={[styles.statSide, styles.statSideLeft]}>
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>{hoursPlayed}</Text>
+            <Text style={styles.statLabel}>Hours Played</Text>
+          </View>
         </View>
-        <View style={styles.statItem}>
-          <Text style={styles.statNumber}>{sessionCount}</Text>
-          <Text style={styles.statLabel}>Sessions</Text>
+        <View style={styles.statCenter}>
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>{sessionCount}</Text>
+            <Text style={styles.statLabel}>Sessions</Text>
+          </View>
         </View>
-        <View style={styles.statItem}>
-          <Text style={styles.statNumber}>{recordedCount}</Text>
-          <Text style={styles.statLabel}>Recorded</Text>
+        <View style={[styles.statSide, styles.statSideRight]}>
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>{recordedCount}</Text>
+            <Text style={styles.statLabel}>Recorded</Text>
+          </View>
         </View>
       </View>
 
@@ -234,9 +240,25 @@ const styles = StyleSheet.create({
   },
   statsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    alignItems: 'flex-start',
     paddingHorizontal: 20,
     marginBottom: 40,
+  },
+  statSide: {
+    flex: 1,
+    minWidth: 0,
+  },
+  statSideLeft: {
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  statSideRight: {
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  statCenter: {
+    alignItems: 'center',
+    justifyContent: 'flex-start',
   },
   statItem: {
     alignItems: 'center',
@@ -254,8 +276,10 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   section: {
-    backgroundColor: '#1A1A1E',
     borderRadius: Layout.borderRadius,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
     marginHorizontal: 20,
     marginBottom: 20,
     padding: 20,

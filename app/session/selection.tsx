@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import * as Haptics from 'expo-haptics';
 import {
   StyleSheet,
@@ -11,9 +11,11 @@ import {
   Pressable,
   ScrollView,
   Modal,
+  Animated,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { MeshGradientView } from 'expo-mesh-gradient';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
 import { Colors, Fonts } from '@/constants/theme';
@@ -52,37 +54,95 @@ const BACKGROUNDS = ['Brainwaves', 'Singing Bowl', 'Pure'];
 
 const FrequencyItem = ({ item, isSelected, onSelect }: { item: typeof FREQUENCIES[0], isSelected: boolean, onSelect: () => void }) => {
   const [glowState, setGlowState] = useState<GlowEvent>('default');
+  const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  // Sync glow state with selection
   React.useEffect(() => {
-    if (isSelected) {
-      setGlowState('press');
-    } else {
-      setGlowState('default');
-    }
+    setGlowState(isSelected ? 'press' : 'default');
   }, [isSelected]);
 
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, { toValue: 0.92, useNativeDriver: true, speed: 60, bounciness: 0 }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 6 }).start();
+  };
+
   return (
-    <AnimatedGlow
-      preset={GlowPresets.vaporwave(ITEM_RADIUS, item.color)}
-      activeState={glowState}
-    >
-      <Pressable 
-        style={[
-          styles.freqCard, 
-          { borderColor: item.color },
-          isSelected && { backgroundColor: item.color + '20' }
-        ]}
-        onPress={() => { Haptics.selectionAsync(); onSelect(); }}
-        // Remove direct state setting on press to let selection control it, 
-        // or combine them. But for "clicked on gets to current thickness", 
-        // we should probably rely on isSelected.
-        // Actually, user said "only when iyts clicked on", which implies selection state.
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <AnimatedGlow
+        preset={GlowPresets.vaporwave(ITEM_RADIUS, item.color)}
+        activeState={glowState}
       >
-        <Text style={styles.freqHz}>{item.hz}</Text>
-        <Text style={styles.freqLabel}>{item.label}</Text>
+        <Pressable
+          style={[
+            styles.freqCard,
+            { borderColor: item.color },
+            isSelected && { backgroundColor: item.color + '20' }
+          ]}
+          onPress={() => { Haptics.selectionAsync(); onSelect(); }}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+        >
+          <Text style={styles.freqHz}>{item.hz}</Text>
+          <Text style={styles.freqLabel}>{item.label}</Text>
+        </Pressable>
+      </AnimatedGlow>
+    </Animated.View>
+  );
+};
+
+const BrainwaveCard = ({ item, isSelected, onSelect }: { item: typeof BRAINWAVES[0], isSelected: boolean, onSelect: () => void }) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, { toValue: 0.92, useNativeDriver: true, speed: 60, bounciness: 0 }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 6 }).start();
+  };
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <AnimatedGlow
+        preset={GlowPresets.vaporwave(ITEM_RADIUS, item.color)}
+        activeState={isSelected ? 'press' : 'default'}
+      >
+        <Pressable
+          style={[
+            styles.freqCard,
+            { borderColor: item.color },
+            isSelected && { backgroundColor: item.color + '20' },
+          ]}
+          onPress={() => { Haptics.selectionAsync(); onSelect(); }}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+        >
+          <Text style={styles.freqHz}>{item.name}</Text>
+          <Text style={styles.brainwaveHz}>{item.hz}</Text>
+          <Text style={styles.freqLabel}>{item.label}</Text>
+        </Pressable>
+      </AnimatedGlow>
+    </Animated.View>
+  );
+};
+
+const BgButton = ({ bg, isSelected, onPress }: { bg: string, isSelected: boolean, onPress: () => void }) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, { toValue: 0.92, useNativeDriver: true, speed: 60, bounciness: 0 }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 6 }).start();
+  };
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <Pressable
+        style={[styles.bgItem, isSelected && styles.bgItemSelected]}
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+      >
+        <Text style={[styles.bgText, isSelected && styles.bgTextSelected]}>{bg}</Text>
       </Pressable>
-    </AnimatedGlow>
+    </Animated.View>
   );
 };
 
@@ -111,7 +171,7 @@ export default function SelectionScreen() {
       selectedBg === 'Brainwaves'
         ? (BRAINWAVES.find(b => b.id === selectedBrainwave)?.color ?? Colors.chakra.blue)
         : (FREQUENCIES.find(f => f.id === selectedFreq)?.color ?? Colors.chakra.blue);
-    router.push({
+    router.replace({
       pathname: '/session/playback',
       params: { freq: selectedFreq, bg: selectedBg, brainwave: selectedBrainwave, color, playlistId },
     });
@@ -166,19 +226,18 @@ export default function SelectionScreen() {
       </View>
 
       <View style={styles.content}>
-        <View style={styles.titleBlock}>
-          <View style={styles.titleRow}>
-            <View style={styles.titleTextBlock}>
-              <Text style={styles.mainTitle}>layer healing{'\n'}frequency</Text>
-              <Text style={styles.subtitle}>
-                select a frequency and soundscape{'\n'}that aligns with your subconscious{'\n'}goals
-              </Text>
+        <View style={styles.contentPadded}>
+          <View style={styles.titleBlock}>
+            <View style={styles.titleRow}>
+              <View style={styles.titleTextBlock}>
+                <Text style={styles.mainTitle}>layer healing{'\n'}frequency</Text>
+              </View>
+              <Ionicons name="pulse" size={46} color={Colors.textSecondary} style={styles.titleIcon} />
             </View>
-            <Ionicons name="pulse" size={46} color={Colors.textSecondary} style={styles.titleIcon} />
           </View>
         </View>
 
-        {/* BG selector — horizontal scroll, below subtitle */}
+        {/* Full-bleed horizontal strip (same pattern as library playlist bar) */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -186,62 +245,54 @@ export default function SelectionScreen() {
           style={styles.bgScroll}
         >
           {BACKGROUNDS.map(bg => (
-            <TouchableOpacity
+            <BgButton
               key={bg}
-              style={[styles.bgItem, selectedBg === bg && styles.bgItemSelected]}
+              bg={bg}
+              isSelected={selectedBg === bg}
               onPress={() => { Haptics.selectionAsync(); stopPreview(); setSelectedBg(bg); }}
-            >
-              <Text style={[styles.bgText, selectedBg === bg && styles.bgTextSelected]}>{bg}</Text>
-            </TouchableOpacity>
+            />
           ))}
         </ScrollView>
 
+        <View style={styles.bgDividerRow}>
+          <LinearGradient
+            colors={[
+              'rgba(200, 200, 205, 0)',
+              'rgba(200, 200, 205, 0.35)',
+              'rgba(220, 220, 225, 0.85)',
+              'rgba(200, 200, 205, 0.35)',
+              'rgba(200, 200, 205, 0)',
+            ]}
+            locations={[0, 0.22, 0.5, 0.78, 1]}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={styles.bgDividerGradient}
+          />
+        </View>
+
+        <View style={styles.contentLower}>
         {/* Fixed-height grid so layout doesn't shift between Brainwaves (2 rows) and Solfeggio (3 rows) */}
         <View style={styles.freqGridContainer}>
         {selectedBg === 'Brainwaves' ? (
           <View style={styles.freqList}>
             <View style={[styles.freqRow, { flexDirection: 'row' }]}>
               {BRAINWAVES.slice(0, 3).map(item => (
-                <AnimatedGlow
+                <BrainwaveCard
                   key={item.id}
-                  preset={GlowPresets.vaporwave(ITEM_RADIUS, item.color)}
-                  activeState={selectedBrainwave === item.id ? 'press' : 'default'}
-                >
-                  <Pressable
-                    style={[
-                      styles.freqCard,
-                      { borderColor: item.color },
-                      selectedBrainwave === item.id && { backgroundColor: item.color + '20' },
-                    ]}
-                    onPress={() => { Haptics.selectionAsync(); setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
-                  >
-                    <Text style={styles.freqHz}>{item.name}</Text>
-                    <Text style={styles.brainwaveHz}>{item.hz}</Text>
-                    <Text style={styles.freqLabel}>{item.label}</Text>
-                  </Pressable>
-                </AnimatedGlow>
+                  item={item}
+                  isSelected={selectedBrainwave === item.id}
+                  onSelect={() => { setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
+                />
               ))}
             </View>
             <View style={[styles.freqRow, { flexDirection: 'row', justifyContent: 'center' }]}>
               {BRAINWAVES.slice(3).map(item => (
-                <AnimatedGlow
+                <BrainwaveCard
                   key={item.id}
-                  preset={GlowPresets.vaporwave(ITEM_RADIUS, item.color)}
-                  activeState={selectedBrainwave === item.id ? 'press' : 'default'}
-                >
-                  <Pressable
-                    style={[
-                      styles.freqCard,
-                      { borderColor: item.color },
-                      selectedBrainwave === item.id && { backgroundColor: item.color + '20' },
-                    ]}
-                    onPress={() => { Haptics.selectionAsync(); setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
-                  >
-                    <Text style={styles.freqHz}>{item.name}</Text>
-                    <Text style={styles.brainwaveHz}>{item.hz}</Text>
-                    <Text style={styles.freqLabel}>{item.label}</Text>
-                  </Pressable>
-                </AnimatedGlow>
+                  item={item}
+                  isSelected={selectedBrainwave === item.id}
+                  onSelect={() => { setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
+                />
               ))}
             </View>
           </View>
@@ -263,6 +314,7 @@ export default function SelectionScreen() {
             <Text style={styles.buttonText}>continue</Text>
           </View>
         </TouchableOpacity>
+        </View>
       </View>
 
       <Modal
@@ -348,6 +400,12 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  contentPadded: {
+    paddingHorizontal: 20,
+  },
+  contentLower: {
+    flex: 1,
     paddingHorizontal: 20,
   },
   titleBlock: {
@@ -371,14 +429,7 @@ const styles = StyleSheet.create({
     fontSize: 40,
     color: Colors.text,
     marginBottom: 8,
-    lineHeight: 40,
-  },
-  subtitle: {
-    fontFamily: Fonts.mono,
-    fontSize: 14,
-    color: Colors.textSecondary,
-    marginBottom: 10,
-    lineHeight: 20,
+    lineHeight: 50,
   },
   freqList: {
     flexGrow: 0,
@@ -419,27 +470,43 @@ const styles = StyleSheet.create({
   },
   freqGridContainer: {
     height: GRID_HEIGHT,
-    marginTop: 24,
+    marginTop: 12,
+  },
+  bgDividerRow: {
+    width: '100%',
+    marginTop: 2,
+    marginBottom: 10,
+  },
+  bgDividerGradient: {
+    height: 2,
+    width: '100%',
+    borderRadius: 1,
   },
   bgScroll: {
     flexGrow: 0,
+    flexShrink: 0,
+    alignSelf: 'stretch',
   },
   bgList: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    flexGrow: 1,
     gap: 10,
-    paddingHorizontal: 2,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
   bgItem: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 24,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: Colors.textSecondary,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
   },
   bgItemSelected: {
-    borderColor: Colors.text,
-    backgroundColor: '#333',
+    borderColor: Colors.chakra.violet,
+    backgroundColor: 'rgba(139,92,246,0.18)',
   },
   bgText: {
     fontFamily: Fonts.mono,

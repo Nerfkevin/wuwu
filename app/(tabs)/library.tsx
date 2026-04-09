@@ -39,6 +39,68 @@ import {
   reorderPlaylistRecordings,
 } from '@/lib/playlist-store';
 
+const springPressIn = { toValue: 0.92 as const, useNativeDriver: true as const, speed: 60, bounciness: 0 };
+const springPressOut = { toValue: 1 as const, useNativeDriver: true as const, speed: 40, bounciness: 6 };
+
+function PlaylistChip({
+  isActive,
+  onPress,
+  onLongPress,
+  delayLongPress,
+  children,
+}: {
+  isActive: boolean;
+  onPress: () => void;
+  onLongPress?: () => void;
+  delayLongPress?: number;
+  children: React.ReactNode;
+}) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, springPressIn).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, springPressOut).start();
+  };
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <Pressable
+        style={[styles.playlistChip, isActive && styles.playlistChipActive]}
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        onLongPress={onLongPress}
+        delayLongPress={onLongPress ? (delayLongPress ?? 500) : undefined}
+      >
+        {children}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+function PlaylistAddButton({ onPress }: { onPress: () => void }) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, springPressIn).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, springPressOut).start();
+  };
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <Pressable
+        style={styles.playlistAddBtn}
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+      >
+        <Ionicons name="add" size={14} color={Colors.textSecondary} />
+        <Text style={styles.playlistAddText}>Playlist</Text>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 function DeleteUnderlay({
   item,
   onDelete,
@@ -355,11 +417,8 @@ export default function LibraryScreen() {
         style={styles.playlistBarScroll}
         contentContainerStyle={styles.playlistBar}
       >
-        <TouchableOpacity
-          style={[
-            styles.playlistChip,
-            selectedPlaylistId === ALL_PLAYLIST_ID && styles.playlistChipActive,
-          ]}
+        <PlaylistChip
+          isActive={selectedPlaylistId === ALL_PLAYLIST_ID}
           onPress={() => { Haptics.selectionAsync(); setSelectedPlaylistId(ALL_PLAYLIST_ID); }}
         >
           <Text
@@ -370,15 +429,12 @@ export default function LibraryScreen() {
           >
             All Recorded
           </Text>
-        </TouchableOpacity>
+        </PlaylistChip>
 
         {playlists.map((pl) => (
-          <TouchableOpacity
+          <PlaylistChip
             key={pl.id}
-            style={[
-              styles.playlistChip,
-              selectedPlaylistId === pl.id && styles.playlistChipActive,
-            ]}
+            isActive={selectedPlaylistId === pl.id}
             onPress={() => { Haptics.selectionAsync(); setSelectedPlaylistId(pl.id); }}
             onLongPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); handleDeletePlaylist(pl); }}
             delayLongPress={500}
@@ -391,16 +447,12 @@ export default function LibraryScreen() {
             >
               {pl.name}
             </Text>
-          </TouchableOpacity>
+          </PlaylistChip>
         ))}
 
-        <TouchableOpacity
-          style={styles.playlistAddBtn}
+        <PlaylistAddButton
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowCreateInput((v) => !v); }}
-        >
-          <Ionicons name="add" size={14} color={Colors.textSecondary} />
-          <Text style={styles.playlistAddText}>Playlist</Text>
-        </TouchableOpacity>
+        />
       </ScrollView>
 
       {showCreateInput && (
@@ -487,7 +539,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   header: {
-    paddingTop: 60,
+    paddingTop: 80,
     paddingHorizontal: 20,
     paddingBottom: 12,
   },
@@ -528,6 +580,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.mono,
     fontSize: 12,
     color: Colors.textSecondary,
+    marginBottom: 3,
   },
   playlistChipTextActive: {
     color: Colors.text,
@@ -547,6 +600,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.mono,
     fontSize: 12,
     color: Colors.textSecondary,
+    marginBottom: 3,
   },
   listContent: {
     paddingTop: 12,
@@ -592,8 +646,8 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   cardTitle: {
-    fontFamily: Fonts.serif,
-    fontSize: 18,
+    fontFamily: Fonts.mono,
+    fontSize: 14,
     color: Colors.text,
     marginBottom: 4,
   },
