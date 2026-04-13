@@ -16,13 +16,14 @@ import {
 import { useRouter, Stack } from 'expo-router';
 import { MeshGradientView } from 'expo-mesh-gradient';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
 import { Colors, Fonts } from '@/constants/theme';
 import { GlowPresets } from '@/constants/glow';
 import { getPlaylists, Playlist, ALL_PLAYLIST_ID } from '@/lib/playlist-store';
 import { getLastPlaylistId, setLastPlaylistId } from '@/lib/session-prefs';
 import { useFrequencyPreview } from '@/lib/use-frequency-preview';
+import { usePostHogScreenViewed } from '@/lib/posthog';
 
 const { width } = Dimensions.get('window');
 const ITEM_SIZE = (width - 40 - 24) / 3; // (screen width - padding - gaps) / 3
@@ -147,21 +148,30 @@ const BgButton = ({ bg, isSelected, onPress }: { bg: string, isSelected: boolean
 };
 
 export default function SelectionScreen() {
+  usePostHogScreenViewed({
+    screen: "session/selection",
+    component: "SelectionScreen",
+  });
+
   const router = useRouter();
-  const [selectedFreq, setSelectedFreq] = useState('528');
+  const [selectedBowlFreq, setSelectedBowlFreq] = useState('528');
+  const [selectedPureFreq, setSelectedPureFreq] = useState('528');
   const [selectedBg, setSelectedBg] = useState('Brainwaves');
   const [selectedBrainwave, setSelectedBrainwave] = useState('alpha');
+
+  const activeFreq = selectedBg === 'Singing Bowl' ? selectedBowlFreq : selectedPureFreq;
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [chosenPlaylistId, setChosenPlaylistId] = useState<string>(ALL_PLAYLIST_ID);
-  const { previewFrequency, previewBrainwave, stopPreview } = useFrequencyPreview();
+  const { previewFrequency, previewBrainwave, stopPreview, fadeOutPreview } = useFrequencyPreview();
 
   const renderFreqItem = ({ item }: { item: typeof FREQUENCIES[0] }) => {
+    const setter = selectedBg === 'Singing Bowl' ? setSelectedBowlFreq : setSelectedPureFreq;
     return (
-      <FrequencyItem 
-        item={item} 
-        isSelected={selectedFreq === item.id} 
-        onSelect={() => { setSelectedFreq(item.id); previewFrequency(item.id, selectedBg); }} 
+      <FrequencyItem
+        item={item}
+        isSelected={activeFreq === item.id}
+        onSelect={() => { setter(item.id); previewFrequency(item.id, selectedBg); }}
       />
     );
   };
@@ -170,10 +180,10 @@ export default function SelectionScreen() {
     const color =
       selectedBg === 'Brainwaves'
         ? (BRAINWAVES.find(b => b.id === selectedBrainwave)?.color ?? Colors.chakra.blue)
-        : (FREQUENCIES.find(f => f.id === selectedFreq)?.color ?? Colors.chakra.blue);
+        : (FREQUENCIES.find(f => f.id === activeFreq)?.color ?? Colors.chakra.blue);
     router.replace({
       pathname: '/session/playback',
-      params: { freq: selectedFreq, bg: selectedBg, brainwave: selectedBrainwave, color, playlistId },
+      params: { freq: activeFreq, bg: selectedBg, brainwave: selectedBrainwave, color, playlistId },
     });
   };
 
@@ -232,7 +242,16 @@ export default function SelectionScreen() {
               <View style={styles.titleTextBlock}>
                 <Text style={styles.mainTitle}>layer healing{'\n'}frequency</Text>
               </View>
-              <Ionicons name="pulse" size={46} color={Colors.textSecondary} style={styles.titleIcon} />
+              {selectedBg === 'Brainwaves' ? (
+                <MaterialCommunityIcons name="brain" size={46} color={Colors.textSecondary} style={styles.titleIcon} />
+              ) : (
+                <MaterialCommunityIcons
+                  name={selectedBg === 'Singing Bowl' ? 'bowl-mix-outline' : 'pulse'}
+                  size={46}
+                  color={Colors.textSecondary}
+                  style={styles.titleIcon}
+                />
+              )}
             </View>
           </View>
         </View>
@@ -249,7 +268,7 @@ export default function SelectionScreen() {
               key={bg}
               bg={bg}
               isSelected={selectedBg === bg}
-              onPress={() => { Haptics.selectionAsync(); stopPreview(); setSelectedBg(bg); }}
+              onPress={() => { Haptics.selectionAsync(); fadeOutPreview(); setSelectedBg(bg); }}
             />
           ))}
         </ScrollView>
@@ -308,6 +327,12 @@ export default function SelectionScreen() {
           />
         )}
         </View>
+
+        {selectedBg === 'Brainwaves' ? (
+          <Text style={styles.brainwaveDisclaimer}>
+            *This is a Binaural Frequency, best used with stereo headphones.
+          </Text>
+        ) : null}
 
         <TouchableOpacity style={styles.mainButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleContinue(); }}>
           <View style={styles.buttonContent}>
@@ -471,6 +496,15 @@ const styles = StyleSheet.create({
   freqGridContainer: {
     height: GRID_HEIGHT,
     marginTop: 12,
+  },
+  brainwaveDisclaimer: {
+    fontFamily: Fonts.mono,
+    fontSize: 11,
+    color: Colors.textSecondary,
+    lineHeight: 16,
+    marginTop: 6,
+    marginBottom: 4,
+    textAlign: 'center',
   },
   bgDividerRow: {
     width: '100%',

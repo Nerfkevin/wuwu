@@ -12,6 +12,8 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   runOnJS,
+  withRepeat,
+  withSequence,
   withTiming,
 } from 'react-native-reanimated';
 import AnimatedGlow, { GlowEvent, PresetConfig } from '@/lib/animated-glow';
@@ -34,10 +36,17 @@ import {
   BRAINWAVE_LABELS,
   withAlpha,
 } from './playback-constants';
+import { usePostHogScreenViewed } from '@/lib/posthog';
 
 const triggerHaptic = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+const triggerFinishHaptic = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
 export default function PlaybackScreen() {
+  usePostHogScreenViewed({
+    screen: "session/playback",
+    component: "PlaybackScreen",
+  });
+
   const router = useRouter();
   const navigation = useNavigation();
   const statsRecordedRef = useRef(false);
@@ -47,6 +56,25 @@ export default function PlaybackScreen() {
   const insets = useSafeAreaInsets();
   const [glowState, setGlowState] = useState<GlowEvent>('default');
   const [showAmbientModal, setShowAmbientModal] = useState(false);
+  const ambientBtnScale = useSharedValue(1);
+  const ambientBtnStyle = useAnimatedStyle(() => ({ transform: [{ scale: ambientBtnScale.value }] }));
+  const finishScale = useSharedValue(1);
+  const finishPulse = useCallback(() => {
+    finishScale.value = withRepeat(
+      withSequence(
+        withTiming(1.06, { duration: 950, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1, { duration: 950, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      false
+    );
+  }, [finishScale]);
+  const finishButtonStyle = useAnimatedStyle(() => ({ transform: [{ scale: finishScale.value }] }));
+
+  useEffect(() => {
+    finishPulse();
+    return () => cancelAnimation(finishScale);
+  }, [finishPulse, finishScale]);
 
   // ─── Derived params ───────────────────────────────────────────────────────
   const selectedFrequency = typeof freq === 'string' && freq in BOWL_AUDIO_BY_FREQUENCY ? freq : '528';
@@ -319,13 +347,21 @@ export default function PlaybackScreen() {
               </View>
             </View>
             <View style={styles.headerRowEnd}>
-              <Pressable
-                style={styles.ambientButton}
-                onPress={() => setShowAmbientModal(true)}
-                onPressIn={triggerHaptic}
-              >
-                <MaterialCommunityIcons name="flower-outline" size={14} color="#000" />
-              </Pressable>
+              <Animated.View style={ambientBtnStyle}>
+                <Pressable
+                  style={styles.ambientButton}
+                  onPress={() => setShowAmbientModal(true)}
+                  onPressIn={() => {
+                    triggerHaptic();
+                    ambientBtnScale.value = withTiming(0.85, { duration: 100, easing: Easing.out(Easing.quad) });
+                  }}
+                  onPressOut={() => {
+                    ambientBtnScale.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.back(2)) });
+                  }}
+                >
+                  <MaterialCommunityIcons name="flower-outline" size={18} color="#000" />
+                </Pressable>
+              </Animated.View>
             </View>
           </View>
 
@@ -374,9 +410,24 @@ export default function PlaybackScreen() {
 
           {/* Footer */}
           <View style={styles.footer}>
-            <Pressable onPress={() => { void handleFinish(); }} onPressIn={triggerHaptic}>
-              <Text style={styles.finishText}>Finish Session</Text>
-            </Pressable>
+            <Animated.View style={finishButtonStyle}>
+              <Pressable
+                onPress={() => { void handleFinish(); }}
+                onPressIn={() => {
+                  void triggerFinishHaptic();
+                  cancelAnimation(finishScale);
+                  finishScale.value = withTiming(0.92, { duration: 100, easing: Easing.out(Easing.quad) });
+                }}
+                onPressOut={() => {
+                  finishScale.value = withTiming(1, { duration: 220, easing: Easing.out(Easing.back(2)) }, (finished) => {
+                    if (!finished) return;
+                    runOnJS(finishPulse)();
+                  });
+                }}
+              >
+                <Text style={styles.finishText}>Finish Session</Text>
+              </Pressable>
+            </Animated.View>
             <View style={styles.volumeContainer}>
               <MaterialCommunityIcons name="head-flash" size={20} color="rgba(255,255,255,0.5)" />
               <GestureDetector gesture={gesture}>
@@ -456,9 +507,9 @@ const styles = StyleSheet.create({
   headerRightInner: { alignItems: 'flex-end', gap: 6 },
   soundToggle: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   ambientButton: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',

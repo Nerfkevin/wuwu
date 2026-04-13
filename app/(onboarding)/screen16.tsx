@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   Animated,
+  Easing,
   Dimensions,
   TouchableWithoutFeedback,
 } from "react-native";
@@ -13,13 +14,19 @@ import * as Haptics from "expo-haptics";
 import * as SecureStore from "expo-secure-store";
 import * as StoreReview from "expo-store-review";
 import LottieView from "lottie-react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { usePostHogScreenViewed } from "@/lib/posthog";
+import { createAudioPlayer } from "@/lib/expo-audio";
+import { formatHoursPlayed } from "@/lib/profile-stats";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
 
 const STREAK = 1;
+const COUNT_DURATION = 1600;
+const HAPTIC_INTERVAL_MS = 70;
 
 const BG_COLORS = [
   "#3d0000", "#7a0000", "#2a0000",
@@ -36,7 +43,7 @@ const DAY_LABELS = ["su", "mo", "tu", "we", "th", "fr", "sa"];
 
 function getWeekDates() {
   const today = new Date();
-  const dayOfWeek = today.getDay(); // 0 = sunday
+  const dayOfWeek = today.getDay();
   return DAY_LABELS.map((_, i) => {
     const d = new Date(today);
     d.setDate(today.getDate() - dayOfWeek + i);
@@ -52,19 +59,34 @@ function getMotivation(streak: number) {
 }
 
 export default function Screen16() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen16",
+    component: "Screen16",
+    screen_number: 16,
+  });
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
 
   const [userName, setUserName] = useState("");
+  const [displayHours, setDisplayHours] = useState("0.0");
+  const [displaySessions, setDisplaySessions] = useState("0");
 
   const lottieRef = useRef<LottieView>(null);
+  const soundRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
   const today = new Date().getDay();
   const weekDates = getWeekDates();
 
-  // intro message anims
+  // intro message anim
   const introOpacity = useRef(new Animated.Value(0)).current;
+
+  // stats block anims
+  const statsOpacity = useRef(new Animated.Value(0)).current;
+  const statsTranslateY = useRef(new Animated.Value(40)).current;
+  const statsScale = useRef(new Animated.Value(1.0)).current;
+
+  // streak section
   const streakOpacity = useRef(new Animated.Value(0)).current;
 
-  // slide-up anims for streak content
+  // slide-up anims for individual streak elements
   const fireSlide = useRef(new Animated.Value(60)).current;
   const fireOpacity = useRef(new Animated.Value(0)).current;
   const numSlide = useRef(new Animated.Value(60)).current;
@@ -80,6 +102,14 @@ export default function Screen16() {
   useEffect(() => {
     fadeIn();
     SecureStore.getItemAsync("user_name").then((n) => setUserName(n ?? ""));
+
+    let soundPlayer: ReturnType<typeof createAudioPlayer> | null = null;
+    try {
+      soundPlayer = createAudioPlayer(require("@/assets/images/complete.mp3"));
+      soundRef.current = soundPlayer;
+    } catch {
+      // audio unavailable
+    }
 
     const delay = (ms: number) =>
       new Promise<void>((res) => setTimeout(res, ms));
@@ -98,8 +128,11 @@ export default function Screen16() {
         }),
       ]);
 
+    let rafId: number;
+    let counting = true;
+
     const run = async () => {
-      // ── phase 1: intro message ──────────────────────────────────────────────
+      // ── Phase 1: intro message ──────────────────────────────────────────────
       await delay(200);
       await new Promise<void>((res) =>
         Animated.timing(introOpacity, {
@@ -119,7 +152,95 @@ export default function Screen16() {
         }).start(() => res())
       );
 
-      // ── phase 2: streak screen ──────────────────────────────────────────────
+      // ── Phase 2: stats block ────────────────────────────────────────────────
+      const sessionMsRaw = await AsyncStorage.getItem("onboarding_session_ms");
+      const sessionMs = Math.max(0, Number(sessionMsRaw ?? 0));
+      const targetHours = parseFloat(formatHoursPlayed(sessionMs));
+
+      const FADE_IN_MS = 900;
+      await new Promise<void>((res) =>
+        Animated.parallel([
+          Animated.timing(statsOpacity, {
+            toValue: 1,
+            duration: FADE_IN_MS,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(statsTranslateY, {
+            toValue: 0,
+            duration: 480,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+        ]).start(() => res())
+      );
+
+      // Pop + sound
+      const POP_UP_MS = 160;
+      const POP_BACK_MS = 340;
+      try { soundPlayer?.play(); } catch { /* ignore */ }
+      await new Promise<void>((res) =>
+        Animated.sequence([
+          Animated.timing(statsScale, {
+            toValue: 1.22,
+            duration: POP_UP_MS,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(statsScale, {
+            toValue: 1.0,
+            duration: POP_BACK_MS,
+            easing: Easing.out(Easing.back(2.5)),
+            useNativeDriver: true,
+          }),
+        ]).start(() => res())
+      );
+      setTimeout(
+        () => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy),
+        POP_UP_MS
+      );
+
+      // Count up
+      await new Promise<void>((res) => {
+        const startTime = Date.now();
+        let lastHaptic = 0;
+        const tick = () => {
+          const now = Date.now();
+          const elapsed = now - startTime;
+          const rawProgress = Math.min(elapsed / COUNT_DURATION, 1);
+          const t = 1 - Math.pow(1 - rawProgress, 3);
+          setDisplayHours((targetHours * t).toFixed(1));
+          setDisplaySessions(String(Math.round(t)));
+          if (now - lastHaptic > HAPTIC_INTERVAL_MS) {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            lastHaptic = now;
+          }
+          if (rawProgress < 1) {
+            rafId = requestAnimationFrame(tick);
+          } else if (counting) {
+            counting = false;
+            res();
+          }
+        };
+        rafId = requestAnimationFrame(tick);
+      });
+
+      // ── Phase 3: shift stats up, show streak ────────────────────────────────
+      await new Promise<void>((res) =>
+        Animated.parallel([
+          Animated.timing(statsTranslateY, {
+            toValue: -180,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+          Animated.timing(statsScale, {
+            toValue: 0.78,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+        ]).start(() => res())
+      );
+
       Animated.timing(streakOpacity, {
         toValue: 1,
         duration: 400,
@@ -145,7 +266,6 @@ export default function Screen16() {
 
       setTimeout(() => lottieRef.current?.play(), 200);
 
-      // fire lottie + streak elements are done animating by now (~600ms for tapOpacity)
       await delay(1100);
       if (await StoreReview.isAvailableAsync()) {
         StoreReview.requestReview();
@@ -153,6 +273,11 @@ export default function Screen16() {
     };
 
     run();
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      try { soundPlayer?.stop(); soundPlayer?.remove(); } catch { /* ignore */ }
+    };
   }, []);
 
   const handleContinue = () => {
@@ -162,124 +287,153 @@ export default function Screen16() {
 
   return (
     <TouchableWithoutFeedback onPress={handleContinue}>
-    <Animated.View style={[styles.container, { opacity: contentOpacity }]}>
-      <MeshGradientView
-        style={StyleSheet.absoluteFill}
-        columns={3}
-        rows={3}
-        colors={BG_COLORS}
-        points={BG_POINTS}
-        smoothsColors
-      />
+      <Animated.View style={[styles.container, { opacity: contentOpacity }]}>
+        <MeshGradientView
+          style={StyleSheet.absoluteFill}
+          columns={3}
+          rows={3}
+          colors={BG_COLORS}
+          points={BG_POINTS}
+          smoothsColors
+        />
 
-      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-        {/* ── intro message ── */}
-        <Animated.View style={[styles.introOverlay, { opacity: introOpacity }]}>
-          <Text style={styles.introText}>
-            {"well done"}
-            {userName ? ` ${userName}` : ""}
-            {",\nyou've completed your\nfirst wu-wu session."}
-          </Text>
-        </Animated.View>
-
-        {/* ── streak content ── */}
-        <Animated.View style={[{ flex: 1 }, { opacity: streakOpacity }]}>
-        <View style={styles.content}>
-          {/* fire lottie */}
-          <Animated.View
-            style={{
-              transform: [{ translateY: fireSlide }],
-              opacity: fireOpacity,
-              alignItems: "center",
-            }}
-          >
-            <LottieView
-              ref={lottieRef}
-              source={require("@/assets/images/onboarding/fire-animation.json")}
-              style={styles.lottie}
-              loop
-              autoPlay={false}
-            />
+        <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+          {/* ── intro message ── */}
+          <Animated.View style={[styles.introOverlay, { opacity: introOpacity }]}>
+            <Text style={styles.introText}>
+              {"well done"}
+              {userName ? ` ${userName}` : ""}
+              {",\nyou've completed your\nfirst wu-wu session."}
+            </Text>
           </Animated.View>
 
-          {/* streak number */}
-          <Animated.Text
-            style={[
-              styles.streakNum,
-              {
-                transform: [{ translateY: numSlide }],
-                opacity: numOpacity,
-              },
-            ]}
-          >
-            {STREAK}
-          </Animated.Text>
-
-          {/* "day streak" label */}
-          <Animated.Text
-            style={[
-              styles.streakLabel,
-              {
-                transform: [{ translateY: labelSlide }],
-                opacity: labelOpacity,
-              },
-            ]}
-          >
-            day streak
-          </Animated.Text>
-
-          {/* subtitle */}
-          <Animated.Text
-            style={[
-              styles.subtitle,
-              {
-                transform: [{ translateY: subtitleSlide }],
-                opacity: subtitleOpacity,
-              },
-            ]}
-          >
-            {getMotivation(STREAK)}
-          </Animated.Text>
-
-          {/* week calendar */}
-          <Animated.View
-            style={[
-              styles.calCard,
-              {
-                transform: [{ translateY: calSlide }],
-                opacity: calOpacity,
-              },
-            ]}
-          >
-            {DAY_LABELS.map((day, i) => (
-              <View key={day} style={styles.dayCol}>
-                <Text style={styles.dayLabel}>{day}</Text>
-                <View
-                  style={[
-                    styles.dayCircle,
-                    i === today && styles.dayCircleActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.dayNum,
-                      i === today && styles.dayNumActive,
-                    ]}
-                  >
-                    {weekDates[i]}
-                  </Text>
+          {/* ── main content area ── */}
+          <View style={styles.content}>
+            {/* stats block */}
+            <Animated.View
+              style={[
+                styles.statsBlock,
+                {
+                  opacity: statsOpacity,
+                  transform: [
+                    { translateY: statsTranslateY },
+                    { scale: statsScale },
+                  ],
+                },
+              ]}
+            >
+              <View style={styles.statRow}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statNumber}>{displayHours}</Text>
+                  <Text style={styles.statLabel}>Hours Played</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Text style={styles.statNumber}>{displaySessions}</Text>
+                  <Text style={styles.statLabel}>Sessions</Text>
                 </View>
               </View>
-            ))}
-          </Animated.View>
-        </View>
+            </Animated.View>
 
-        <Animated.View style={[styles.footer, { opacity: tapOpacity }]}>
-          <Text style={styles.tapText}>tap to continue →</Text>
-        </Animated.View>
-        </Animated.View>
-      </SafeAreaView>
-    </Animated.View>
+            {/* streak section — absolutely positioned so it appears below the shifted stats */}
+            <Animated.View
+              style={[styles.streakSection, { opacity: streakOpacity }]}
+            >
+              {/* fire lottie */}
+              <Animated.View
+                style={{
+                  transform: [{ translateY: fireSlide }],
+                  opacity: fireOpacity,
+                  alignItems: "center",
+                }}
+              >
+                <LottieView
+                  ref={lottieRef}
+                  source={require("@/assets/images/onboarding/fire-animation.json")}
+                  style={styles.lottie}
+                  loop
+                  autoPlay={false}
+                />
+              </Animated.View>
+
+              {/* streak number */}
+              <Animated.Text
+                style={[
+                  styles.streakNum,
+                  {
+                    transform: [{ translateY: numSlide }],
+                    opacity: numOpacity,
+                  },
+                ]}
+              >
+                {STREAK}
+              </Animated.Text>
+
+              {/* "day streak" label */}
+              <Animated.Text
+                style={[
+                  styles.streakLabel,
+                  {
+                    transform: [{ translateY: labelSlide }],
+                    opacity: labelOpacity,
+                  },
+                ]}
+              >
+                day streak
+              </Animated.Text>
+
+              {/* subtitle */}
+              <Animated.Text
+                style={[
+                  styles.subtitle,
+                  {
+                    transform: [{ translateY: subtitleSlide }],
+                    opacity: subtitleOpacity,
+                  },
+                ]}
+              >
+                {getMotivation(STREAK)}
+              </Animated.Text>
+
+              {/* week calendar */}
+              <Animated.View
+                style={[
+                  styles.calCard,
+                  {
+                    transform: [{ translateY: calSlide }],
+                    opacity: calOpacity,
+                  },
+                ]}
+              >
+                {DAY_LABELS.map((day, i) => (
+                  <View key={day} style={styles.dayCol}>
+                    <Text style={styles.dayLabel}>{day}</Text>
+                    <View
+                      style={[
+                        styles.dayCircle,
+                        i === today && styles.dayCircleActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.dayNum,
+                          i === today && styles.dayNumActive,
+                        ]}
+                      >
+                        {weekDates[i]}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </Animated.View>
+            </Animated.View>
+          </View>
+
+          <Animated.View style={[styles.footer, { opacity: tapOpacity }]}>
+            <Text style={styles.tapText}>tap to continue →</Text>
+          </Animated.View>
+        </SafeAreaView>
+      </Animated.View>
     </TouchableWithoutFeedback>
   );
 }
@@ -306,35 +460,77 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 28,
+    paddingBottom: 100,
+  },
+  statsBlock: {
+    alignItems: "center",
+    width: "100%",
+  },
+  statRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 0,
   },
+  statItem: {
+    alignItems: "center",
+    paddingHorizontal: 28,
+  },
+  statDivider: {
+    width: 1,
+    height: 60,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  statNumber: {
+    fontFamily: Fonts.serif,
+    fontSize: isSmallDevice ? 56 : 68,
+    color: "#fff",
+    lineHeight: isSmallDevice ? 62 : 76,
+    includeFontPadding: false,
+  },
+  statLabel: {
+    fontFamily: Fonts.mono,
+    fontSize: 11,
+    color: "rgba(255,255,255,0.5)",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginTop: 6,
+  },
+  streakSection: {
+    position: "absolute",
+    top: "36%",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    paddingHorizontal: 28,
+  },
   lottie: {
-    width: isSmallDevice ? 110 : 130,
-    height: isSmallDevice ? 110 : 130,
+    width: isSmallDevice ? 90 : 110,
+    height: isSmallDevice ? 90 : 110,
   },
   streakNum: {
-    fontSize: isSmallDevice ? 88 : 108,
+    fontSize: isSmallDevice ? 72 : 88,
     color: "#fff",
     fontFamily: Fonts.serif,
-    lineHeight: isSmallDevice ? 96 : 116,
-    marginTop: -8,
+    lineHeight: isSmallDevice ? 78 : 96,
+    marginTop: -6,
     includeFontPadding: false,
   },
   streakLabel: {
-    fontSize: isSmallDevice ? 22 : 26,
+    fontSize: isSmallDevice ? 20 : 24,
     color: "rgba(255,255,255,0.9)",
     fontFamily: Fonts.mono,
     letterSpacing: 0.5,
     marginTop: 2,
-    marginBottom: 14,
+    marginBottom: 10,
   },
   subtitle: {
-    fontSize: 14,
-    color: "rgba(255,255,255,0.55)",
+    fontSize: 13,
+    color: "rgba(255,255,255,0.5)",
     fontFamily: Fonts.mono,
     textAlign: "center",
-    lineHeight: 22,
-    marginBottom: 40,
+    lineHeight: 20,
+    marginBottom: 28,
     paddingHorizontal: 10,
   },
   calCard: {

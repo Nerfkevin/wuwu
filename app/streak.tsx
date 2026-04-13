@@ -15,6 +15,7 @@ import LottieView from 'lottie-react-native';
 import Svg, { Path as SvgPath } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { Fonts } from '@/constants/theme';
+import { usePostHogScreenViewed } from '@/lib/posthog';
 
 const { width } = Dimensions.get('window');
 const isSmallDevice = width < 380;
@@ -52,6 +53,11 @@ function getMotivation(streak: number) {
 }
 
 export default function StreakScreen() {
+  usePostHogScreenViewed({
+    screen: "streak",
+    component: "StreakScreen",
+  });
+
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const lottieRef = useRef<LottieView>(null);

@@ -48,6 +48,7 @@ import {
   configureBackgroundPlaybackAsync,
   configureMixedPlaybackAsync,
 } from '@/lib/audio-playback';
+import { usePostHogScreenViewed } from '@/lib/posthog';
 
 const recordColor = '#FF0000';
 const TRIM_MIN_GAP_SECONDS = 0.35;
@@ -59,7 +60,13 @@ const normalizeParam = (value?: string | string[]) =>
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-export default function RecordingScreen() {
+type RecordingScreenProps = { reviewMode?: boolean };
+
+export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {}) {
+  usePostHogScreenViewed({
+    screen: reviewMode ? 'add/review' : 'add/recording',
+    component: reviewMode ? 'ReviewScreen' : 'RecordingScreen',
+  });
   const router = useRouter();
   const params = useLocalSearchParams<{ text?: string; pillar?: string; writeOwn?: string; onboarding?: string }>();
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);

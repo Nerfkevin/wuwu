@@ -17,6 +17,7 @@ import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { usePostHogScreenViewed } from "@/lib/posthog";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -425,6 +426,11 @@ const snapStyles = StyleSheet.create({
 // ─── main screen ─────────────────────────────────────────────────────────────
 
 export default function Screen5() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen5",
+    component: "Screen5",
+    screen_number: 5,
+  });
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const [activeIndex, setActiveIndex] = useState(0);
   const [titleDone, setTitleDone] = useState(false);

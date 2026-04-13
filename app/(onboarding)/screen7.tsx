@@ -19,6 +19,7 @@ import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { usePostHogScreenViewed } from "@/lib/posthog";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -599,6 +600,11 @@ function PersonalizedCard({
 // ─── main screen ──────────────────────────────────────────────────────────────
 
 export default function Screen7() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen7",
+    component: "Screen7",
+    screen_number: 7,
+  });
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const [activeIndex, setActiveIndex] = useState(0);
   const [titleDone, setTitleDone] = useState(false);

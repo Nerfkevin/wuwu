@@ -1,9 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import { AudioBuffer, AudioContext } from '@/lib/audio-api-core';
 import * as Haptics from 'expo-haptics';
 import { getSavedRecordings, SavedRecording } from '@/lib/recording-store';
-import { configureBackgroundPlaybackAsync } from '@/lib/audio-playback';
 import {
   TRACK_GAP_MS,
   BOWL_VOLUME,
@@ -60,10 +60,10 @@ export function useAudioEngine({
 
   // ─── Refs ─────────────────────────────────────────────────────────────────
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const bowlGainRef = useRef<ReturnType<AudioContext['createGain']> | null>(null);
+  const masterGainRef = useRef<ReturnType<AudioContext['createGain']> | null>(null);
+  const bowlNodeRef = useRef<AmbientNode | null>(null);
   const affirmationGainRef = useRef<ReturnType<AudioContext['createGain']> | null>(null);
   const binauralGainRef = useRef<ReturnType<AudioContext['createGain']> | null>(null);
-  const bowlSourceRef = useRef<ReturnType<AudioContext['createBufferSource']> | null>(null);
   const affirmationSourceRef = useRef<ReturnType<AudioContext['createBufferSource']> | null>(null);
   const pureOscRef = useRef<ReturnType<AudioContext['createOscillator']> | null>(null);
   const leftOscRef = useRef<ReturnType<AudioContext['createOscillator']> | null>(null);
@@ -78,7 +78,6 @@ export function useAudioEngine({
   const currentTrackIndexRef = useRef(0);
   const isPlayingRef = useRef(false);
   const isOscMutedRef = useRef(false);
-  const audioSessionConfiguredRef = useRef(false);
   const activeAmbientSoundsRef = useRef<Set<AmbientSoundId>>(new Set());
   const ambientNodesRef = useRef<Map<AmbientSoundId, AmbientNode>>(new Map());
   const ambientBuffersRef = useRef<Map<AmbientSoundId, AudioBuffer>>(new Map());
@@ -134,34 +133,46 @@ export function useAudioEngine({
   }, [clearSessionTimer]);
 
   // ─── Audio context ────────────────────────────────────────────────────────
-  const ensureAudioSession = useCallback(async () => {
-    if (audioSessionConfiguredRef.current) return;
-    audioSessionConfiguredRef.current = true;
-    await configureBackgroundPlaybackAsync();
-  }, []);
-
   const ensureAudioContext = useCallback(() => {
     if (audioCtxRef.current) return audioCtxRef.current;
     const ctx = new AudioContext();
     audioCtxRef.current = ctx;
 
-    const bowlGain = ctx.createGain();
-    bowlGain.gain.value = isBowlMuted ? 0 : BOWL_VOLUME;
-    bowlGain.connect(ctx.destination);
-    bowlGainRef.current = bowlGain;
+    // ── Master bus: all audio → masterGain → softLimiter → destination ──
+    const masterGain = ctx.createGain();
+    masterGain.gain.value = 1;
+    masterGainRef.current = masterGain;
+
+    // Soft limiter: tanh WaveShaper curve — falls back to direct connect if unsupported
+    try {
+      const CURVE_SIZE = 4096;
+      const curve = new Float32Array(CURVE_SIZE);
+      const k = 4;
+      for (let i = 0; i < CURVE_SIZE; i++) {
+        const x = (i * 2) / (CURVE_SIZE - 1) - 1;
+        curve[i] = (Math.tanh(k * x) / Math.tanh(k)) * 1.05;
+      }
+      const softLimiter = ctx.createWaveShaper();
+      softLimiter.curve = curve;
+      softLimiter.oversample = '4x';
+      masterGain.connect(softLimiter);
+      softLimiter.connect(ctx.destination);
+    } catch {
+      masterGain.connect(ctx.destination);
+    }
 
     const affirmationGain = ctx.createGain();
     affirmationGain.gain.value = affirmationVolumeRef.current;
-    affirmationGain.connect(ctx.destination);
+    affirmationGain.connect(masterGain);
     affirmationGainRef.current = affirmationGain;
 
     const binauralGain = ctx.createGain();
     binauralGain.gain.value = isOscMutedRef.current ? 0 : OSC_VOLUME;
-    binauralGain.connect(ctx.destination);
+    binauralGain.connect(masterGain);
     binauralGainRef.current = binauralGain;
 
     return ctx;
-  }, [isBowlMuted]);
+  }, []);
 
   // ─── Source teardown ──────────────────────────────────────────────────────
   const stopAffirmationSource = useCallback(() => {
@@ -174,22 +185,22 @@ export function useAudioEngine({
   }, []);
 
   const stopBowlSource = useCallback(() => {
-    const source = bowlSourceRef.current;
-    if (!source) return;
-    bowlSourceRef.current = null;
+    const node = bowlNodeRef.current;
+    if (!node) return;
+    bowlNodeRef.current = null;
+    const { source, gain } = node;
     const ctx = audioCtxRef.current;
-    const gain = bowlGainRef.current;
-    const FADE = 0.04;
-    if (ctx && gain) {
+    if (isPlayingRef.current && ctx) {
       const now = ctx.currentTime;
       gain.gain.cancelScheduledValues(now);
       gain.gain.setValueAtTime(gain.gain.value, now);
-      gain.gain.linearRampToValueAtTime(0, now + FADE);
-      try { source.stop(now + FADE); } catch { /* already ended */ }
+      gain.gain.linearRampToValueAtTime(0, now + 0.04);
+      try { source.stop(now + 0.04); } catch { /* already ended */ }
     } else {
       try { source.stop(); } catch { /* already ended */ }
     }
     try { source.disconnect(); } catch { /* best effort */ }
+    try { gain.disconnect(); } catch { /* best effort */ }
   }, []);
 
   // ─── Buffer loading ───────────────────────────────────────────────────────
@@ -197,17 +208,6 @@ export function useAudioEngine({
     if (bowlBufferRef.current) return bowlBufferRef.current;
     const ctx = ensureAudioContext();
     const buffer = await ctx.decodeAudioData(selectedBowlAudio);
-    // Short linear fade at start/end so the loop boundary is at zero amplitude.
-    const FADE_SAMPLES = 512;
-    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
-      const data = buffer.getChannelData(ch);
-      for (let i = 0; i < FADE_SAMPLES && i < data.length; i++) {
-        data[i] *= i / FADE_SAMPLES;
-      }
-      for (let i = 0; i < FADE_SAMPLES && i < data.length; i++) {
-        data[data.length - 1 - i] *= i / FADE_SAMPLES;
-      }
-    }
     bowlBufferRef.current = buffer;
     return buffer;
   }, [ensureAudioContext, selectedBowlAudio]);
@@ -302,7 +302,7 @@ export function useAudioEngine({
       AMBIENT_VOLUME * noiseMul * (ambientVolumesRef.current[id] ?? 1),
       ctx.currentTime + 0.05,
     );
-    gain.connect(ctx.destination);
+    gain.connect(masterGainRef.current ?? ctx.destination);
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
@@ -356,9 +356,9 @@ export function useAudioEngine({
     pureOscRef.current = null;
     leftOscRef.current = null;
     rightOscRef.current = null;
-    bowlGainRef.current = null;
     affirmationGainRef.current = null;
     binauralGainRef.current = null;
+    masterGainRef.current = null;
     bowlBufferRef.current = null;
     affirmationBuffersRef.current.clear();
     if (audioCtxRef.current) {
@@ -408,21 +408,22 @@ export function useAudioEngine({
   // ─── Playback ─────────────────────────────────────────────────────────────
   const startBowlPlayback = useCallback(async () => {
     if (!shouldPlaySingingBowl) return false;
-    if (bowlSourceRef.current) return true;
+    if (bowlNodeRef.current) return true;
     const ctx = ensureAudioContext();
     const buffer = await loadBowlBuffer();
-    const gain = bowlGainRef.current;
-    if (!gain) return false;
-    const targetVolume = isBowlMuted ? 0 : BOWL_VOLUME;
-    gain.gain.cancelScheduledValues(ctx.currentTime);
+    const gain = ctx.createGain();
     gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(targetVolume, ctx.currentTime + 0.05);
+    gain.gain.linearRampToValueAtTime(
+      isBowlMuted ? 0 : BOWL_VOLUME,
+      ctx.currentTime + 0.05,
+    );
+    gain.connect(masterGainRef.current ?? ctx.destination);
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
     source.connect(gain);
     source.start();
-    bowlSourceRef.current = source;
+    bowlNodeRef.current = { source, gain };
     return true;
   }, [ensureAudioContext, isBowlMuted, loadBowlBuffer, shouldPlaySingingBowl]);
 
@@ -477,7 +478,7 @@ export function useAudioEngine({
     if (!shouldPlaySingingBowl) return;
     setIsBowlMuted((current) => {
       const next = !current;
-      if (bowlGainRef.current) bowlGainRef.current.gain.value = next ? 0 : BOWL_VOLUME;
+      if (bowlNodeRef.current) bowlNodeRef.current.gain.gain.value = next ? 0 : BOWL_VOLUME;
       return next;
     });
   }, [shouldPlaySingingBowl]);
@@ -528,9 +529,27 @@ export function useAudioEngine({
       isPlayingRef.current = false;
       return;
     }
-    await ensureAudioSession();
-    await ensureAudioContext().resume();
-    void preloadAmbientBuffers();
+    const ctx = ensureAudioContext();
+    const activeIds = [...activeAmbientSoundsRef.current] as AmbientSoundId[];
+    await Promise.all([
+      ctx.resume(),
+      shouldPlaySingingBowl ? loadBowlBuffer() : Promise.resolve(),
+      ...activeIds.map(async (id) => {
+        if (ambientBuffersRef.current.has(id)) return;
+        if (NOISE_IDS.has(id)) {
+          ambientBuffersRef.current.set(id, createNoiseBuffer(id as 'white' | 'pink' | 'brown'));
+          return;
+        }
+        const entry = NATURE_SOUNDS.find((s) => s.id === id);
+        if (!entry?.asset) return;
+        try {
+          const buf = await ctx.decodeAudioData(entry.asset);
+          ambientBuffersRef.current.set(id, buf);
+        } catch { /* best effort */ }
+      }),
+    ]);
+    setTimeout(() => { void preloadAmbientBuffers(); }, 4000);
+    isPlayingRef.current = true;
     if (shouldPlaySingingBowl) await startBowlPlayback();
     if (shouldPlayBrainwave) startBinaural();
     else if (shouldPlayPure) startPure();
@@ -548,12 +567,12 @@ export function useAudioEngine({
     }
     startSessionTimer();
     setIsPlaying(true);
-    isPlayingRef.current = true;
   }, [
     isPlaying, clearNextTrackTimer, pauseAudioEngine, pauseSessionTimer,
-    ensureAudioSession, ensureAudioContext, shouldPlaySingingBowl, shouldPlayBrainwave,
-    shouldPlayPure, startBowlPlayback, startBinaural, startPure,
+    ensureAudioContext, shouldPlaySingingBowl, shouldPlayBrainwave,
+    shouldPlayPure, loadBowlBuffer, startBowlPlayback, startBinaural, startPure,
     startAffirmationPlayback, startAmbientSound, startSessionTimer, preloadAmbientBuffers,
+    createNoiseBuffer,
   ]);
 
   const stopSession = useCallback((): number => {
@@ -569,7 +588,18 @@ export function useAudioEngine({
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
   useEffect(() => { activeAmbientSoundsRef.current = activeAmbientSounds; }, [activeAmbientSounds]);
 
-  // Load saved ambient prefs once on mount
+  // Resume context when app comes back to foreground (replaces watchdog)
+  useEffect(() => {
+    if (!isPlaying) return;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void audioCtxRef.current?.resume();
+      }
+    });
+    return () => sub.remove();
+  }, [isPlaying]);
+
+  // Load saved ambient pref metadata on mount
   useEffect(() => {
     AsyncStorage.getItem('ambient_prefs').then((raw) => {
       if (!raw) return;
@@ -584,7 +614,6 @@ export function useAudioEngine({
         }
       } catch { /* ignore */ }
     }).catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist ambient prefs whenever they change
@@ -620,7 +649,6 @@ export function useAudioEngine({
     if (!isPlaying || recordings.length === 0 || affirmationSourceRef.current) return;
     const start = async () => {
       try {
-        await ensureAudioSession();
         await ensureAudioContext().resume();
         await startAffirmationPlayback(currentTrackIndexRef.current);
       } catch (e) {
@@ -628,7 +656,7 @@ export function useAudioEngine({
       }
     };
     void start();
-  }, [ensureAudioContext, ensureAudioSession, isPlaying, recordings, startAffirmationPlayback]);
+  }, [ensureAudioContext, isPlaying, recordings, startAffirmationPlayback]);
 
   useEffect(() => {
     return () => {
@@ -640,7 +668,7 @@ export function useAudioEngine({
 
   useEffect(() => {
     bowlBufferRef.current = null;
-    if (!bowlSourceRef.current) return;
+    if (!bowlNodeRef.current) return;
     stopBowlSource();
     if (isPlayingRef.current && shouldPlaySingingBowl) void startBowlPlayback();
   }, [selectedBowlAudio, shouldPlaySingingBowl, startBowlPlayback, stopBowlSource]);

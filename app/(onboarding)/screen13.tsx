@@ -21,7 +21,7 @@ import { createAudioPlayer } from "@/lib/expo-audio";
 import type { AudioPlayer } from "@/lib/expo-audio";
 import { useFrequencyPreview } from "@/lib/use-frequency-preview";
 import { Fonts, Colors, Layout } from "@/constants/theme";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AnimatedGlow, { GlowEvent } from "@/lib/animated-glow";
 import { GlowPresets } from "@/constants/glow";
 import { AFFIRMATION_PILLARS, PillarKey } from "@/constants/affirmations";
@@ -32,6 +32,7 @@ import {
   configureMixedPlaybackAsync,
 } from "@/lib/audio-playback";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { usePostHogScreenViewed } from "@/lib/posthog";
 import { LinearGradient } from "expo-linear-gradient";
 
 const { width } = Dimensions.get("window");
@@ -326,6 +327,11 @@ function PillarCard({ item, isSelected, onSelect }: {
 // ─── main screen ─────────────────────────────────────────────────────────────
 
 export default function Screen13() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen13",
+    component: "Screen13",
+    screen_number: 13,
+  });
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const router = useRouter();
 
@@ -336,10 +342,13 @@ export default function Screen13() {
   const [shuffledMessages, setShuffledMessages] = useState<Record<string, string[]>>({});
 
   // ── frequency slide state ──
-  const [selectedFreq,       setSelectedFreq]       = useState("528");
-  const { previewFrequency, previewBrainwave, stopPreview } = useFrequencyPreview();
+  const [selectedBowlFreq,   setSelectedBowlFreq]   = useState("528");
+  const [selectedPureFreq,   setSelectedPureFreq]   = useState("528");
+  const { previewFrequency, previewBrainwave, stopPreview, fadeOutPreview } = useFrequencyPreview();
   const [selectedBg,         setSelectedBg]         = useState<typeof BG_OPTIONS[number]>("Brainwaves");
   const [selectedBrainwave,  setSelectedBrainwave]  = useState("alpha");
+
+  const activeFreq = selectedBg === "Singing Bowl" ? selectedBowlFreq : selectedPureFreq;
   const [pillarTitleVisible,  setPillarTitleVisible]  = useState(0);
   const [recordTitleVisible,  setRecordTitleVisible]  = useState(0);
   const [freqTitleVisible,    setFreqTitleVisible]    = useState(0);
@@ -672,6 +681,7 @@ export default function Screen13() {
 
   const handlePlay = async (item: TrackItem) => {
     if (!item.uri) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (playerRef.current && playingId === item.id) {
       if (playerRef.current.playing) {
         playerRef.current.pause();
@@ -736,7 +746,7 @@ export default function Screen13() {
     } else if (activeIndex === 4) {
       goToFrequencySlide();
     } else {
-      await AsyncStorage.setItem("onboarding_freq",       selectedFreq);
+      await AsyncStorage.setItem("onboarding_freq",       activeFreq);
       await AsyncStorage.setItem("onboarding_freq_bg",    selectedBg);
       await AsyncStorage.setItem("onboarding_brainwave",  selectedBrainwave);
       navigateTo("/(onboarding)/screen14");
@@ -1010,7 +1020,16 @@ export default function Screen13() {
                 </Animated.View>
               </View>
               <Animated.View style={{ opacity: fadeFreq }}>
-                <Ionicons name="pulse" size={48} color={Colors.textSecondary} style={styles.freqDecorIcon} />
+                {selectedBg === 'Brainwaves' ? (
+                  <MaterialCommunityIcons name="brain" size={48} color={Colors.textSecondary} style={styles.freqDecorIcon} />
+                ) : (
+                  <MaterialCommunityIcons
+                    name={selectedBg === 'Singing Bowl' ? 'bowl-mix-outline' : 'pulse'}
+                    size={48}
+                    color={Colors.textSecondary}
+                    style={styles.freqDecorIcon}
+                  />
+                )}
               </Animated.View>
             </View>
             </View>
@@ -1027,7 +1046,7 @@ export default function Screen13() {
                     key={bg}
                     bg={bg}
                     isSelected={selectedBg === bg}
-                    onPress={() => { stopPreview(); setSelectedBg(bg); }}
+                    onPress={() => { Haptics.selectionAsync(); fadeOutPreview(); setSelectedBg(bg); }}
                   />
                 ))}
               </ScrollView>
@@ -1058,7 +1077,7 @@ export default function Screen13() {
                           key={item.id}
                           item={item}
                           isSelected={selectedBrainwave === item.id}
-                          onSelect={() => { setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
+                          onSelect={() => { Haptics.selectionAsync(); setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
                         />
                       ))}
                     </View>
@@ -1068,7 +1087,7 @@ export default function Screen13() {
                           key={item.id}
                           item={item}
                           isSelected={selectedBrainwave === item.id}
-                          onSelect={() => { setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
+                          onSelect={() => { Haptics.selectionAsync(); setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
                         />
                       ))}
                     </View>
@@ -1076,13 +1095,16 @@ export default function Screen13() {
                 ) : (
                   <FlatList
                     data={FREQUENCIES}
-                    renderItem={({ item }) => (
-                      <FrequencyCard
-                        item={item}
-                        isSelected={selectedFreq === item.id}
-                        onSelect={() => { setSelectedFreq(item.id); previewFrequency(item.id, selectedBg); }}
-                      />
-                    )}
+                    renderItem={({ item }) => {
+                      const setter = selectedBg === "Singing Bowl" ? setSelectedBowlFreq : setSelectedPureFreq;
+                      return (
+                        <FrequencyCard
+                          item={item}
+                          isSelected={activeFreq === item.id}
+                          onSelect={() => { Haptics.selectionAsync(); setter(item.id); previewFrequency(item.id, selectedBg); }}
+                        />
+                      );
+                    }}
                     keyExtractor={item => item.id}
                     numColumns={3}
                     scrollEnabled={false}
@@ -1091,6 +1113,11 @@ export default function Screen13() {
                   />
                 )}
               </View>
+              {selectedBg === "Brainwaves" ? (
+                <Text style={styles.brainwaveDisclaimer}>
+                  *This is a Binaural Frequency, best used with stereo headphones.
+                </Text>
+              ) : null}
               </View>
             </Animated.View>
           </View>
@@ -1478,6 +1505,14 @@ const styles = StyleSheet.create({
   },
   bgTextSelected: { color: Colors.text },
   freqGridContainer: { overflow: "hidden" },
+  brainwaveDisclaimer: {
+    fontFamily: Fonts.mono,
+    fontSize: 11,
+    color: Colors.textSecondary,
+    lineHeight: 16,
+    marginTop: 6,
+    textAlign: "center",
+  },
   freqList: { flexGrow: 0 },
   freqRow: {
     flexDirection: "row",

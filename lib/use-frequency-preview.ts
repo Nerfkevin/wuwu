@@ -18,7 +18,7 @@ const BOWL_ASSETS: Record<string, any> = {
 };
 
 const FADE_STEPS = 20;
-const FADE_MS = 400;
+const FADE_MS = 750;
 const TOTAL_MS = 3000;
 
 // ─── Preloaded bowl players ────────────────────────────────────────────────────
@@ -40,16 +40,37 @@ const ensureOscCtx = (): AudioContext => {
   return oscCtx;
 };
 
-const cutoverOscAudio = () => {
+// fadeDuration: seconds. Default 0.05 for quick cleanup; pass FADE_MS/1000 for crossfade.
+const cutoverOscAudio = (fadeDuration = 0.05) => {
   if (oscCtx && oscFadeGain) {
     const now = oscCtx.currentTime;
     oscFadeGain.gain.cancelScheduledValues(now);
-    oscFadeGain.gain.linearRampToValueAtTime(0, now + 0.05);
+    oscFadeGain.gain.setValueAtTime(oscFadeGain.gain.value, now);
+    oscFadeGain.gain.linearRampToValueAtTime(0, now + fadeDuration);
   }
-  const stopAt = (oscCtx?.currentTime ?? 0) + 0.06;
+  const stopAt = (oscCtx?.currentTime ?? 0) + fadeDuration + 0.01;
   oscActiveNodes.forEach(n => { try { n.stop(stopAt); } catch { /* best effort */ } });
   oscActiveNodes = [];
   oscFadeGain = null;
+};
+
+// ─── Bowl crossfade state ──────────────────────────────────────────────────────
+// Separate timer array so clearPreviewTimers() doesn't cancel an outgoing fade.
+let currentlyPlayingBowlId: string | null = null;
+let crossfadeOutTimers: ReturnType<typeof setTimeout>[] = [];
+
+const clearCrossfadeOutTimers = () => {
+  crossfadeOutTimers.forEach(clearTimeout);
+  crossfadeOutTimers = [];
+};
+
+const stopAllBowlPlayersExcept = (exceptId: string) => {
+  if (!bowlPlayers) return;
+  for (const [id, p] of bowlPlayers.entries()) {
+    if (id === exceptId) continue;
+    try { p.stop(); } catch { /* best effort */ }
+    try { (p as any).volume = 0; } catch { /* best effort */ }
+  }
 };
 
 const releaseOscCtx = () => {
@@ -72,12 +93,24 @@ const getBowlPlayers = (): Map<string, AudioPlayer> => {
   return bowlPlayers;
 };
 
-const pauseAllBowlPlayers = () => {
+const stopAllBowlPlayers = () => {
   if (!bowlPlayers) return;
   for (const p of bowlPlayers.values()) {
-    try { p.pause(); } catch { /* best effort */ }
+    try { p.stop(); } catch { /* best effort */ }
     try { (p as any).volume = 0; } catch { /* best effort */ }
   }
+};
+
+// Fully destroy all players and reset the cache so the next AudioContext creation
+// (react-native-audio-api) does not conflict with live expo-audio sessions.
+const releaseAllBowlPlayers = () => {
+  if (!bowlPlayers) return;
+  for (const p of bowlPlayers.values()) {
+    try { p.stop(); } catch { /* best effort */ }
+    try { p.remove(); } catch { /* best effort */ }
+  }
+  bowlPlayers = null;
+  audioModeConfigured = false;
 };
 
 // ─── Preview controller ────────────────────────────────────────────────────────
@@ -102,16 +135,72 @@ const releasePreviewAudioContext = (audioCtx: AudioContext | null) => {
 };
 
 const stopManagedPreview = (ownerId?: number, releaseOsc = true) => {
-  if (ownerId != null && previewController.ownerId !== ownerId) return;
+  // Only skip if another hook instance owns the active preview.
+  // Allow cleanup when nothing is playing (ownerId === null) so BG-switch
+  // always tears down audio even if the previous preview already expired.
+  if (
+    ownerId != null &&
+    previewController.ownerId != null &&
+    previewController.ownerId !== ownerId
+  ) return;
 
   previewController.runId += 1;
   clearPreviewTimers();
-  pauseAllBowlPlayers();
+  clearCrossfadeOutTimers();
+  currentlyPlayingBowlId = null;
+  releaseAllBowlPlayers();
   releasePreviewAudioContext(previewController.audioCtx);
   previewController.audioCtx = null;
   previewController.playingKey = null;
   previewController.ownerId = null;
   if (releaseOsc) releaseOscCtx();
+};
+
+/** Fade out current preview over FADE_MS (bowl + oscillator). Keeps osc AudioContext open for next tap. */
+const fadeOutManagedPreview = (ownerId?: number) => {
+  if (
+    ownerId != null &&
+    previewController.ownerId != null &&
+    previewController.ownerId !== ownerId
+  ) return;
+
+  const hasSomething =
+    previewController.playingKey != null ||
+    currentlyPlayingBowlId != null ||
+    oscFadeGain != null;
+  if (!hasSomething) return;
+
+  previewController.runId += 1;
+  clearPreviewTimers();
+  clearCrossfadeOutTimers();
+
+  const bowlId = currentlyPlayingBowlId;
+  if (bowlId && bowlPlayers?.has(bowlId)) {
+    stopAllBowlPlayersExcept(bowlId);
+    const outgoing = bowlPlayers.get(bowlId)!;
+    const startVol = Math.max(0.001, Math.min(1, (outgoing as any).volume ?? 1));
+    const stepMs = FADE_MS / FADE_STEPS;
+    for (let i = 1; i <= FADE_STEPS; i++) {
+      const ii = i;
+      crossfadeOutTimers.push(setTimeout(() => {
+        try { (outgoing as any).volume = startVol * (1 - ii / FADE_STEPS); } catch { /* best effort */ }
+      }, ii * stepMs));
+    }
+    crossfadeOutTimers.push(setTimeout(() => {
+      try { outgoing.pause(); } catch { /* best effort */ }
+      try { (outgoing as any).volume = 0; } catch { /* best effort */ }
+      currentlyPlayingBowlId = null;
+    }, FADE_MS + 50));
+  } else {
+    currentlyPlayingBowlId = null;
+  }
+
+  cutoverOscAudio(FADE_MS / 1000);
+
+  releasePreviewAudioContext(previewController.audioCtx);
+  previewController.audioCtx = null;
+  previewController.playingKey = null;
+  previewController.ownerId = null;
 };
 
 const schedulePreviewTimer = (runId: number, cb: () => void, delayMs: number) => {
@@ -135,16 +224,43 @@ export function useFrequencyPreview() {
     stopManagedPreview(ownerIdRef.current ?? undefined);
   }, []);
 
-  // ── Bowl (preloaded, instant switch) ────────────────────────────────────────
+  const fadeOutPreview = useCallback(() => {
+    fadeOutManagedPreview(ownerIdRef.current ?? undefined);
+  }, []);
+
+  // ── Bowl (preloaded, crossfade switch) ──────────────────────────────────────
   const _playBowl = useCallback(async (freqId: string, key: string) => {
     // Configure audio session once at app level
     if (!audioModeConfigured) {
       try { await configureMixedPlaybackAsync(); audioModeConfigured = true; } catch { /* best effort */ }
     }
 
-    // 1. Stop everything synchronously before any async work
-    pauseAllBowlPlayers();
+    // 1. Crossfade: fade out the outgoing bowl over FADE_MS; stop all others immediately.
+    //    Uses a separate timer array so clearPreviewTimers() can't cancel the outgoing fade.
+    clearCrossfadeOutTimers();
+    const prevBowlId = currentlyPlayingBowlId;
+    if (prevBowlId !== null && prevBowlId !== freqId && bowlPlayers?.has(prevBowlId)) {
+      const outgoing = bowlPlayers.get(prevBowlId)!;
+      const startVol = Math.max(0.001, Math.min(1, (outgoing as any).volume ?? 1));
+      const stepMs = FADE_MS / FADE_STEPS;
+      for (let i = 1; i <= FADE_STEPS; i++) {
+        const ii = i;
+        crossfadeOutTimers.push(setTimeout(() => {
+          try { (outgoing as any).volume = startVol * (1 - ii / FADE_STEPS); } catch { /* best effort */ }
+        }, ii * stepMs));
+      }
+      crossfadeOutTimers.push(setTimeout(() => {
+        try { outgoing.pause(); } catch { /* best effort */ }
+        try { (outgoing as any).volume = 0; } catch { /* best effort */ }
+      }, FADE_MS + 50));
+      stopAllBowlPlayersExcept(prevBowlId);
+    } else {
+      stopAllBowlPlayers();
+    }
+    currentlyPlayingBowlId = freqId;
+
     clearPreviewTimers();
+    cutoverOscAudio();
     releasePreviewAudioContext(previewController.audioCtx);
     previewController.audioCtx = null;
     previewController.runId += 1;
@@ -182,23 +298,30 @@ export function useFrequencyPreview() {
       clearPreviewTimers();
       previewController.playingKey = null;
       previewController.ownerId = null;
+      currentlyPlayingBowlId = null;
     }, TOTAL_MS + 50);
   }, []);
 
   // ── Pure sine ────────────────────────────────────────────────────────────────
-  const _playPure = useCallback((hz: number, key: string) => {
+  const _playPure = useCallback(async (hz: number, key: string) => {
     // Stop bowls + clear timers, but keep the persistent oscCtx alive
-    pauseAllBowlPlayers();
+    stopAllBowlPlayers();
     clearPreviewTimers();
-    cutoverOscAudio();
+    cutoverOscAudio(FADE_MS / 1000);
     previewController.runId += 1;
     const runId = previewController.runId;
     previewController.ownerId = ownerIdRef.current;
     previewController.playingKey = key;
 
     const ctx = ensureOscCtx();
-    // Context may auto-suspend after silence on mobile — always resume before scheduling
-    ctx.resume().catch(() => {});
+    // Must await resume — on iOS the context auto-suspends after silence and
+    // currentTime is frozen; scheduling against a stale time causes oscillators
+    // to expire before they ever audibly play.
+    try { await ctx.resume(); } catch { /* best effort */ }
+
+    // Bail out if another tap arrived while we were waiting for resume
+    if (previewController.runId !== runId) return;
+
     const now = ctx.currentTime;
     const fadeS = FADE_MS / 1000;
     const totalS = TOTAL_MS / 1000;
@@ -230,19 +353,23 @@ export function useFrequencyPreview() {
   }, []);
 
   // ── Binaural beat ────────────────────────────────────────────────────────────
-  const _playBinaural = useCallback((beat: number, key: string) => {
+  const _playBinaural = useCallback(async (beat: number, key: string) => {
     // Stop bowls + clear timers, but keep the persistent oscCtx alive
-    pauseAllBowlPlayers();
+    stopAllBowlPlayers();
     clearPreviewTimers();
-    cutoverOscAudio();
+    cutoverOscAudio(FADE_MS / 1000);
     previewController.runId += 1;
     const runId = previewController.runId;
     previewController.ownerId = ownerIdRef.current;
     previewController.playingKey = key;
 
     const ctx = ensureOscCtx();
-    // Context may auto-suspend after silence on mobile — always resume before scheduling
-    ctx.resume().catch(() => {});
+    // Must await resume — same reason as _playPure above
+    try { await ctx.resume(); } catch { /* best effort */ }
+
+    // Bail out if another tap arrived while we were waiting for resume
+    if (previewController.runId !== runId) return;
+
     const now = ctx.currentTime;
     const fadeS = FADE_MS / 1000;
     const totalS = TOTAL_MS / 1000;
@@ -295,7 +422,7 @@ export function useFrequencyPreview() {
       void _playBowl(freqId, key);
     } else if (bg === 'Pure') {
       const hz = parseFloat(freqId);
-      if (!isNaN(hz)) _playPure(hz, key);
+      if (!isNaN(hz)) void _playPure(hz, key);
     }
   }, [_playBowl, _playPure]);
 
@@ -303,10 +430,10 @@ export function useFrequencyPreview() {
     const key = `brainwave:${brainwaveId}`;
     if (previewController.playingKey === key) return;
     const beat = BINAURAL_BEATS[brainwaveId];
-    if (beat != null) _playBinaural(beat, key);
+    if (beat != null) void _playBinaural(beat, key);
   }, [_playBinaural]);
 
   useEffect(() => () => cleanup(), [cleanup]);
 
-  return { previewFrequency, previewBrainwave, stopPreview: cleanup };
+  return { previewFrequency, previewBrainwave, stopPreview: cleanup, fadeOutPreview };
 }

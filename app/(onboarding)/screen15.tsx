@@ -35,6 +35,8 @@ import {
   withAlpha,
   affirmationPercentToGain,
 } from '../session/playback-constants';
+import { usePostHogScreenViewed } from "@/lib/posthog";
+import MakeItRain from '@/app/session/make-it-rain';
 
 const triggerHaptic = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
@@ -57,6 +59,11 @@ const FREQ_COLORS: Record<string, string> = {
 type SessionSettings = { freq: string; bg: string; brainwave: string };
 
 export default function Screen15() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen15",
+    component: "Screen15",
+    screen_number: 15,
+  });
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -127,6 +134,8 @@ export default function Screen15() {
     currentRecording?.pillar && currentRecording.pillar in AFFIRMATION_PILLARS
       ? AFFIRMATION_PILLARS[currentRecording.pillar as PillarKey].color
       : selectedColor;
+
+  const hasAbundance = recordings.some((r) => r.pillar === 'Abundance');
 
   const totalMessages = recordings.length;
   const progressLabel =
@@ -489,6 +498,7 @@ export default function Screen15() {
       stopAllAudio();
       pauseSessionTimer();
       if (mountedRef.current) {
+        await AsyncStorage.setItem('onboarding_session_ms', String(sessionElapsedMsRef.current));
         router.replace('/(onboarding)/screen16' as any);
       }
     };
@@ -507,6 +517,11 @@ export default function Screen15() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={styles.container}>
+        {hasAbundance && (
+          <View style={[StyleSheet.absoluteFillObject, { opacity: 0.1, zIndex: 0 }]} pointerEvents="none">
+            <MakeItRain />
+          </View>
+        )}
         <SafeAreaView
           style={[
             styles.safeArea,
@@ -593,7 +608,7 @@ export default function Screen15() {
           {/* Bottom label */}
           <View style={styles.footer}>
             <View style={styles.affirmingRow}>
-              <Text style={styles.affirmingLabel}>YOU ARE AFFIRMING</Text>
+              <Text style={styles.affirmingLabel}>YOU ARE MANIFESTING</Text>
               <Text style={styles.affirmingDots}>
                 {'.'.repeat(dotCount).padEnd(3, '\u00A0')}
               </Text>

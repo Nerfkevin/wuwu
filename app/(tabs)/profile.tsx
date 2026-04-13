@@ -24,6 +24,7 @@ import {
 } from 'expo-web-browser';
 import { Colors, Fonts, Layout } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
+import { usePostHogScreenViewed } from '@/lib/posthog';
 
 const TERMS_URL = 'https://98goats.com/wuwu/terms';
 const PRIVACY_URL = 'https://98goats.com/wuwu/privacy';
@@ -61,6 +62,11 @@ const defaultBuiltInMicLabel =
   Platform.OS === 'ios' ? 'iPhone microphone' : 'Device microphone';
 
 export default function ProfileScreen() {
+  usePostHogScreenViewed({
+    screen: "tabs/profile",
+    component: "ProfileScreen",
+  });
+
   const [userName, setUserName] = useState<string | null>(null);
   const [hoursPlayed, setHoursPlayed] = useState('0');
   const [sessionCount, setSessionCount] = useState('0');

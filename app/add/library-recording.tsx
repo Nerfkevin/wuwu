@@ -15,8 +15,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { createAudioPlayer } from 'expo-audio';
-import type { AudioPlayer } from 'expo-audio';
+import { createAudioPlayer, type AudioPlayer } from '@/lib/expo-audio';
 import { AFFIRMATION_PILLARS } from '@/constants/affirmations';
 import * as Haptics from 'expo-haptics';
 import { Colors, Fonts } from '@/constants/theme';
@@ -40,8 +39,14 @@ import {
   getPlaylists,
   removeRecordingFromPlaylist,
 } from '@/lib/playlist-store';
+import { usePostHogScreenViewed } from '@/lib/posthog';
 
 export default function LibraryRecordingScreen() {
+  usePostHogScreenViewed({
+    screen: "add/library-recording",
+    component: "LibraryRecordingScreen",
+  });
+
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string; playlistId?: string }>();
   const [recording, setRecording] = useState<SavedRecording | null>(null);
@@ -255,7 +260,7 @@ export default function LibraryRecordingScreen() {
         <View style={styles.cardGlowWrapper}>
           <AffirmationCard glowColor={pillarColor}>
             <Text style={styles.affirmationText}>
-              "{recording?.text ?? 'Recording not found.'}"
+              {`"${recording?.text ?? 'Recording not found.'}"`}
             </Text>
           </AffirmationCard>
         </View>
@@ -405,6 +410,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 24,
     alignItems: 'center',
+    marginTop: 72,
   },
   cardGlowWrapper: {
     width: '100%',
@@ -413,8 +419,8 @@ const styles = StyleSheet.create({
   },
   affirmationText: {
     fontFamily: Fonts.serif,
-    fontSize: 30,
-    lineHeight: 40,
+    fontSize: 24,
+    lineHeight: 32,
     textAlign: 'center',
     color: Colors.text,
   },

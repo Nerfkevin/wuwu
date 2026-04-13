@@ -16,6 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { usePostHogScreenViewed } from "@/lib/posthog";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -208,6 +209,11 @@ function TextSlide({
 }
 
 export default function Screen2() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen2",
+    component: "Screen2",
+    screen_number: 2,
+  });
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const [activeIndex, setActiveIndex] = useState(0);
   const [typingDone, setTypingDone] = useState(false);

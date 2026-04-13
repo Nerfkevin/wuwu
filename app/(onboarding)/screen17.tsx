@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Image, Dimensions, Animated, Platform, Touchabl
 import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { usePostHogScreenViewed } from "@/lib/posthog";
 import * as Notifications from "expo-notifications";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -67,6 +68,11 @@ Notifications.setNotificationHandler({
 });
 
 export default function Screen17() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen17",
+    component: "Screen17",
+    screen_number: 17,
+  });
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const insets = useSafeAreaInsets();
 

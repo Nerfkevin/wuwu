@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { usePostHogScreenViewed } from "@/lib/posthog";
 import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 
 const TYPEWRITER_MS = 50;
@@ -267,6 +268,11 @@ const dots = StyleSheet.create({
 const IMG_SIZE = isSmallDevice ? width * 0.56 : width * 0.62;
 
 export default function Screen10() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen10",
+    component: "Screen10",
+    screen_number: 10,
+  });
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const listRef = useRef<FlatList>(null);
   const [activeIndex, setActiveIndex] = useState(0);

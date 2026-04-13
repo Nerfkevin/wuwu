@@ -14,6 +14,7 @@ import * as Haptics from "expo-haptics";
 import * as SecureStore from "expo-secure-store";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { usePostHogScreenViewed } from "@/lib/posthog";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -63,6 +64,11 @@ function FadeLetter({ ch, charStyle }: { ch: string; charStyle: object }) {
 }
 
 export default function Screen4() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen4",
+    component: "Screen4",
+    screen_number: 4,
+  });
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const [name, setName] = useState<string | null>(null);
 

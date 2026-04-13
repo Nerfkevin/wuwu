@@ -13,6 +13,7 @@ import { MeshGradientView } from "expo-mesh-gradient";
 import Svg, { Circle, Defs, LinearGradient, Stop } from "react-native-svg";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { usePostHogScreenViewed } from "@/lib/posthog";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -185,6 +186,11 @@ function LivePercent({ anim }: { anim: Animated.Value }) {
 // ─── main screen ─────────────────────────────────────────────────────────────
 
 export default function Screen8() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen8",
+    component: "Screen8",
+    screen_number: 8,
+  });
   const { contentOpacity, fadeIn, replaceTo } = useOnboardingNav();
 
   const [currentPhase, setCurrentPhase] = useState(0);

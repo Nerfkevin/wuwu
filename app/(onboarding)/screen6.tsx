@@ -15,6 +15,7 @@ import * as SecureStore from "expo-secure-store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { usePostHogScreenViewed } from "@/lib/posthog";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -239,6 +240,11 @@ function formatDailyHours(h: number): string {
 }
 
 export default function Screen6() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen6",
+    component: "Screen6",
+    screen_number: 6,
+  });
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
 
   const [slide, setSlide] = useState<0 | 1>(0);
@@ -310,7 +316,7 @@ export default function Screen6() {
       { text: "do you have just " },
       { text: "5 minutes", bold: true },
       {
-        text: " to quietly reprogram your subconscious each day?",
+        text: " to quietly reprogram your subconscious mind each day?",
       },
     ],
     []

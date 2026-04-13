@@ -22,6 +22,7 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-g
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Fonts } from '@/constants/theme';
 import { AmbientSoundId, NATURE_SOUNDS, NOISE_SOUNDS, VISUAL_SOUND_IDS, withAlpha } from './playback-constants';
+import { usePostHog } from '@/lib/posthog';
 
 const NATURE_TILE_UI: Record<
   Exclude<AmbientSoundId, 'white' | 'pink' | 'brown' | 'money'>,
@@ -108,6 +109,19 @@ export default function AmbientModal({
   ambientVolumes,
   onAmbientVolumeChange,
 }: Props) {
+  const ph = usePostHog();
+  useEffect(() => {
+    if (!visible) return;
+    try {
+      ph?.capture('screen_viewed', {
+        screen: 'session/ambient-modal',
+        component: 'AmbientModal',
+      });
+    } catch {
+      /* */
+    }
+  }, [visible, ph]);
+
   const sliderWidthSV = useSharedValue(0);
   const translateY = useSharedValue(0);
 

@@ -5,6 +5,7 @@ export const { height } = Dimensions.get('window');
 
 export const TRACK_GAP_MS = 5000;
 export const BOWL_VOLUME = 0.5;
+export const BOWL_CROSSFADE_DURATION = 0.8; // seconds of overlap at each loop boundary
 export const BINAURAL_CARRIER = 200;
 export const OSC_VOLUME = 0.5;
 export const AFFIRMATION_DEFAULT_VOLUME_PERCENT = 50;

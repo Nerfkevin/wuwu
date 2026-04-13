@@ -7,6 +7,7 @@ import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { usePostHogScreenViewed } from "@/lib/posthog";
 
 const TYPEWRITER_MS = 30;
 const LETTER_FADE_MS = 400;
@@ -62,6 +63,11 @@ const CONTENT = {
 };
 
 export default function Screen19() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen19",
+    component: "Screen19",
+    screen_number: 19,
+  });
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const [isHigh, setIsHigh] = React.useState(true);
   const [ready, setReady] = useState(false);

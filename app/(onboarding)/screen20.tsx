@@ -16,6 +16,9 @@ import * as SecureStore from "expo-secure-store";
 import Svg, { Path as SvgPath } from "react-native-svg";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { usePostHogScreenViewed } from "@/lib/posthog";
+import MakeItRain from "@/app/session/make-it-rain";
+import { createAudioPlayer } from "@/lib/expo-audio";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -71,6 +74,11 @@ const COMMITMENTS = [
 const PAD_HEIGHT = isSmallDevice ? 110 : 140;
 
 export default function Screen20() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen20",
+    component: "Screen20",
+    screen_number: 20,
+  });
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const [userName, setUserName] = useState<string | null>(null);
   const [paths, setPaths] = useState<string[]>([]);
@@ -81,6 +89,9 @@ export default function Screen20() {
 
   const [titleVisibleCount, setTitleVisibleCount] = useState(0);
   const [titleDone, setTitleDone] = useState(false);
+  const [showRain, setShowRain] = useState(false);
+  const rainOpacity = useRef(new Animated.Value(0)).current;
+  const soundRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
 
   useEffect(() => {
     fadeIn();
@@ -100,7 +111,10 @@ export default function Screen20() {
       if (ch && !/\s/.test(ch)) Haptics.selectionAsync();
       setTitleVisibleCount(i);
     }, TYPEWRITER_MS);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      try { soundRef.current?.stop(); soundRef.current?.remove(); } catch { /* ignore */ }
+    };
   }, []);
 
   useEffect(() => {
@@ -162,12 +176,44 @@ export default function Screen20() {
   const handleSign = async () => {
     if (!hasSignature) return;
     await SecureStore.setItemAsync("signature_paths", JSON.stringify(paths));
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    navigateTo("/(onboarding)/screen21");
+
+    // Strong haptic burst on sign
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    setTimeout(() => void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success), 120);
+
+    // Rain + applause
+    setShowRain(true);
+    Animated.timing(rainOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    try {
+      const player = createAudioPlayer(require("@/assets/images/applause.mp3"));
+      soundRef.current = player;
+      player.play();
+    } catch { /* ignore */ }
+
+    // Light consecutive haptics throughout the rain
+    let hapticCount = 0;
+    const hapticInterval = setInterval(() => {
+      hapticCount++;
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (hapticCount >= 18) clearInterval(hapticInterval);
+    }, 160);
+
+    // Let rain animate longer, then fade it out and navigate
+    setTimeout(() => {
+      clearInterval(hapticInterval);
+      Animated.timing(rainOpacity, { toValue: 0, duration: 500, useNativeDriver: true }).start(() => {
+        navigateTo("/(onboarding)/screen21");
+      });
+    }, 3200);
   };
 
   return (
     <Animated.View style={[styles.container, { opacity: contentOpacity }]}>
+      {showRain && (
+        <Animated.View style={[StyleSheet.absoluteFillObject, { opacity: rainOpacity, zIndex: 100 }]} pointerEvents="none">
+          <MakeItRain speedMultiplier={2} delayMultiplier={8} />
+        </Animated.View>
+      )}
       <MeshGradientView
         style={StyleSheet.absoluteFill}
         columns={3}
@@ -368,8 +414,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: isSmallDevice ? 24 : 32,
-    paddingBottom: isSmallDevice ? 10 : 20,
-    paddingTop: 12,
+    paddingBottom: isSmallDevice ? 10 : 30,
   },
   signButton: {
     borderRadius: 20,

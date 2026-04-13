@@ -16,6 +16,7 @@ import { Fonts } from '@/constants/theme';
 import { formatHoursPlayed } from '@/lib/profile-stats';
 import { updateStreakOnSession } from '@/lib/streak-utils';
 import { createAudioPlayer } from '@/lib/expo-audio';
+import { usePostHogScreenViewed } from '@/lib/posthog';
 
 const { width } = Dimensions.get('window');
 const isSmallDevice = width < 380;
@@ -55,6 +56,11 @@ const COUNT_DURATION = 1600;
 const HAPTIC_INTERVAL_MS = 70;
 
 export default function SessionCompleteScreen() {
+  usePostHogScreenViewed({
+    screen: "session/complete",
+    component: "SessionCompleteScreen",
+  });
+
   const router = useRouter();
   const lottieRef = useRef<LottieView>(null);
   const today = new Date().getDay();
@@ -86,7 +92,18 @@ export default function SessionCompleteScreen() {
   const statsTranslateY = useRef(new Animated.Value(40)).current;
   const statsScale = useRef(new Animated.Value(1.0)).current;
   const streakOpacity = useRef(new Animated.Value(0)).current;
-  const streakTranslateY = useRef(new Animated.Value(40)).current;
+
+  // individual streak element slides (matches screen16)
+  const fireSlide = useRef(new Animated.Value(60)).current;
+  const fireOpacity = useRef(new Animated.Value(0)).current;
+  const numSlide = useRef(new Animated.Value(60)).current;
+  const numOpacity = useRef(new Animated.Value(0)).current;
+  const labelSlide = useRef(new Animated.Value(60)).current;
+  const labelOpacity = useRef(new Animated.Value(0)).current;
+  const subtitleSlide = useRef(new Animated.Value(50)).current;
+  const subtitleOpacity = useRef(new Animated.Value(0)).current;
+  const calSlide = useRef(new Animated.Value(50)).current;
+  const calOpacity = useRef(new Animated.Value(0)).current;
 
   // Sound player — created once, played on mount
   const soundRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
@@ -100,65 +117,15 @@ export default function SessionCompleteScreen() {
       // audio unavailable
     }
 
-    // Phase 0a: fade in screen
-    Animated.timing(containerOpacity, {
-      toValue: 1,
-      duration: 400,
-      useNativeDriver: true,
-    }).start();
-
-    // Phase 0b: fade in stats + float up
-    // translateY settles faster than opacity so it's fully parked before the pop fires
-    const FADE_IN_MS = 900;
-    Animated.parallel([
-      Animated.timing(statsOpacity, {
-        toValue: 1,
-        duration: FADE_IN_MS,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(statsTranslateY, {
-        toValue: 0,
-        duration: 480,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    // Phase 1: after fade-in, play sound + pop animation + heavy haptic
     const POP_UP_MS = 160;
     const POP_BACK_MS = 340;
+    const FADE_IN_MS = 900;
     const POP_DELAY = FADE_IN_MS + 60;
 
-    const popTimeout = setTimeout(() => {
-      // Play sound in sync with pop
-      try { player?.play(); } catch { /* ignore */ }
-
-      // Pop: scale up fast, then spring back with overshoot
-      Animated.sequence([
-        Animated.timing(statsScale, {
-          toValue: 1.22,
-          duration: POP_UP_MS,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(statsScale, {
-          toValue: 1.0,
-          duration: POP_BACK_MS,
-          easing: Easing.out(Easing.back(2.5)),
-          useNativeDriver: true,
-        }),
-      ]).start();
-
-      // Heavy haptic fires exactly at scale peak
-      setTimeout(() => {
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-      }, POP_UP_MS);
-    }, POP_DELAY);
-
-    // Phase 2: count up numbers with light haptics (starts after pop settles)
     let rafId: number;
     let counting = true;
+    let popTimeout: ReturnType<typeof setTimeout>;
+    let countTimeout: ReturnType<typeof setTimeout>;
 
     const startCounting = () => {
       const startTime = Date.now();
@@ -189,7 +156,56 @@ export default function SessionCompleteScreen() {
       rafId = requestAnimationFrame(tick);
     };
 
-    const countTimeout = setTimeout(startCounting, POP_DELAY + POP_UP_MS + POP_BACK_MS + 60);
+    // Phase 0a: fade in screen — all stats animations start in the callback
+    // so the slide-up is fully visible against an opaque background
+    Animated.timing(containerOpacity, {
+      toValue: 1,
+      duration: 400,
+      useNativeDriver: true,
+    }).start(() => {
+      // Phase 0b: fade in stats — slide up + fade, identical to screen16
+      Animated.parallel([
+        Animated.timing(statsOpacity, {
+          toValue: 1,
+          duration: FADE_IN_MS,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(statsTranslateY, {
+          toValue: 0,
+          duration: 480,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      // Phase 1: after fade-in, play sound + pop animation + heavy haptic
+      popTimeout = setTimeout(() => {
+        try { player?.play(); } catch { /* ignore */ }
+
+        Animated.sequence([
+          Animated.timing(statsScale, {
+            toValue: 1.22,
+            duration: POP_UP_MS,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(statsScale, {
+            toValue: 1.0,
+            duration: POP_BACK_MS,
+            easing: Easing.out(Easing.back(2.5)),
+            useNativeDriver: true,
+          }),
+        ]).start();
+
+        setTimeout(() => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        }, POP_UP_MS);
+      }, POP_DELAY);
+
+      // Phase 2: count up numbers with light haptics (starts after pop settles)
+      countTimeout = setTimeout(startCounting, POP_DELAY + POP_UP_MS + POP_BACK_MS + 60);
+    });
 
     return () => {
       clearTimeout(popTimeout);
@@ -206,7 +222,24 @@ export default function SessionCompleteScreen() {
       setStreakBefore(before);
       setStreak(after);
 
-      // Phase 2: shift stats up + scale down, then fade in streak
+      const slide = (translateY: Animated.Value, opacity: Animated.Value) =>
+        Animated.parallel([
+          Animated.timing(translateY, {
+            toValue: 0,
+            duration: 520,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacity, {
+            toValue: 1,
+            duration: 420,
+            useNativeDriver: true,
+          }),
+        ]);
+
+      const delay = (ms: number) =>
+        new Promise<void>((res) => setTimeout(res, ms));
+
+      // Phase 2: shift stats up + scale down
       Animated.parallel([
         Animated.timing(statsTranslateY, {
           toValue: -180,
@@ -218,36 +251,39 @@ export default function SessionCompleteScreen() {
           duration: 600,
           useNativeDriver: true,
         }),
-      ]).start(() => {
-        // Fade in streak section
-        Animated.parallel([
-          Animated.timing(streakOpacity, {
-            toValue: 1,
-            duration: 500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(streakTranslateY, {
-            toValue: 0,
-            duration: 500,
-            useNativeDriver: true,
-          }),
-        ]).start(() => {
-          lottieRef.current?.play();
+      ]).start(async () => {
+        // Fade in streak container, then stagger-slide each child — same as screen16
+        Animated.timing(streakOpacity, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }).start();
 
-          if (after !== before) {
-            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          }
+        await delay(80);
+        slide(fireSlide, fireOpacity).start();
+        await delay(100);
+        slide(numSlide, numOpacity).start();
+        await delay(80);
+        slide(labelSlide, labelOpacity).start();
+        await delay(80);
+        slide(subtitleSlide, subtitleOpacity).start();
+        await delay(80);
+        slide(calSlide, calOpacity).start();
 
-          // Phase 3: wait then fade out + dismiss all modals back to tabs
-          setTimeout(() => {
-            Animated.timing(containerOpacity, {
-              toValue: 0,
-              duration: 600,
-              useNativeDriver: true,
-            }).start(() => {
-              router.back();
-            });
-          }, 2200);
+        setTimeout(() => lottieRef.current?.play(), 200);
+
+        if (after !== before) {
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+
+        // Phase 3: wait then fade out + dismiss
+        await delay(2200);
+        Animated.timing(containerOpacity, {
+          toValue: 0,
+          duration: 600,
+          useNativeDriver: true,
+        }).start(() => {
+          router.back();
         });
       });
     });
@@ -294,28 +330,41 @@ export default function SessionCompleteScreen() {
             </View>
           </Animated.View>
 
-          {/* Streak section — absolutely positioned so it never displaces the stats */}
-          <Animated.View
-            style={[
-              styles.streakSection,
-              {
-                opacity: streakOpacity,
-                transform: [{ translateY: streakTranslateY }],
-              },
-            ]}
-          >
-            <LottieView
-              ref={lottieRef}
-              source={require('@/assets/images/onboarding/fire-animation.json')}
-              style={styles.lottie}
-              loop
-              autoPlay={false}
-            />
-            <Text style={styles.streakNum}>{streak}</Text>
-            <Text style={styles.streakLabel}>day streak</Text>
-            <Text style={styles.streakSubtitle}>{getMotivation(streak)}</Text>
+          {/* Streak section — absolutely positioned, container opacity-only like screen16 */}
+          <Animated.View style={[styles.streakSection, { opacity: streakOpacity }]}>
+            <Animated.View
+              style={{ transform: [{ translateY: fireSlide }], opacity: fireOpacity, alignItems: 'center' }}
+            >
+              <LottieView
+                ref={lottieRef}
+                source={require('@/assets/images/onboarding/fire-animation.json')}
+                style={styles.lottie}
+                loop
+                autoPlay={false}
+              />
+            </Animated.View>
 
-            <View style={styles.calCard}>
+            <Animated.Text
+              style={[styles.streakNum, { transform: [{ translateY: numSlide }], opacity: numOpacity }]}
+            >
+              {streak}
+            </Animated.Text>
+
+            <Animated.Text
+              style={[styles.streakLabel, { transform: [{ translateY: labelSlide }], opacity: labelOpacity }]}
+            >
+              day streak
+            </Animated.Text>
+
+            <Animated.Text
+              style={[styles.streakSubtitle, { transform: [{ translateY: subtitleSlide }], opacity: subtitleOpacity }]}
+            >
+              {getMotivation(streak)}
+            </Animated.Text>
+
+            <Animated.View
+              style={[styles.calCard, { transform: [{ translateY: calSlide }], opacity: calOpacity }]}
+            >
               {DAY_LABELS.map((day, i) => (
                 <View key={day} style={styles.dayCol}>
                   <Text style={styles.dayLabel}>{day}</Text>
@@ -326,7 +375,7 @@ export default function SessionCompleteScreen() {
                   </View>
                 </View>
               ))}
-            </View>
+            </Animated.View>
           </Animated.View>
 
         </View>

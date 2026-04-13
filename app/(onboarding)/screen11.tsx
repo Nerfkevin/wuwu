@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { usePostHogScreenViewed } from "@/lib/posthog";
 import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 
 const TYPEWRITER_MS = 33;
@@ -55,6 +56,11 @@ const STEPS = [
 ];
 
 export default function Screen11() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen11",
+    component: "Screen11",
+    screen_number: 11,
+  });
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const [modalVisible, setModalVisible] = useState(false);
 

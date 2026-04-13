@@ -19,8 +19,14 @@ import { Colors, Fonts } from '@/constants/theme';
 import { GlowPresets } from '@/constants/glow';
 import { Ionicons } from '@expo/vector-icons';
 import AffirmationCard from './components/affirmation-card';
+import { usePostHogScreenViewed } from '@/lib/posthog';
 
 export default function WriteScreen() {
+  usePostHogScreenViewed({
+    screen: "add/write",
+    component: "WriteScreen",
+  });
+
   const router = useRouter();
   const { pillar } = useLocalSearchParams();
   const [text, setText] = useState('');

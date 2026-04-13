@@ -14,6 +14,7 @@ import { MeshGradientView } from "expo-mesh-gradient";
 import Svg, { Circle, Defs, LinearGradient, Stop } from "react-native-svg";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { usePostHogScreenViewed } from "@/lib/posthog";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -165,6 +166,11 @@ const MSG_DURATIONS = [3000, 3000, 3000, 3000, 3000, 1500, 1500];
 const DOT_COUNT = 6;
 
 export default function Screen14() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen14",
+    component: "Screen14",
+    screen_number: 14,
+  });
   const { contentOpacity, fadeIn, replaceTo } = useOnboardingNav();
   const [msgIndex, setMsgIndex] = useState(0);
   const [messages, setMessages] = useState<string[]>([]);

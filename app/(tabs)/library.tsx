@@ -38,6 +38,7 @@ import {
   getPlaylists,
   reorderPlaylistRecordings,
 } from '@/lib/playlist-store';
+import { usePostHogScreenViewed } from '@/lib/posthog';
 
 const springPressIn = { toValue: 0.92 as const, useNativeDriver: true as const, speed: 60, bounciness: 0 };
 const springPressOut = { toValue: 1 as const, useNativeDriver: true as const, speed: 40, bounciness: 6 };
@@ -126,6 +127,11 @@ function DeleteUnderlay({
 }
 
 export default function LibraryScreen() {
+  usePostHogScreenViewed({
+    screen: "tabs/library",
+    component: "LibraryScreen",
+  });
+
   const router = useRouter();
   const { bottom: bottomInset } = useSafeAreaInsets();
   const tabBarHeight = 50 + bottomInset;
@@ -502,7 +508,7 @@ export default function LibraryScreen() {
         }
       />
 
-      <Animated.View style={[styles.fabWrapper, { bottom: tabBarHeight + 20 }, { transform: [{ scale: fabScale }] }]}>
+      <Animated.View style={[styles.fabWrapper, { bottom: tabBarHeight - 40 }, { transform: [{ scale: fabScale }] }]}>
         <AnimatedGlow preset={GlowPresets.chakra(30, ['#6B21CC', '#BF5FFF', '#FF4DC4', '#BF5FFF', '#6B21CC'], 6, 6)} activeState={glowState}>
           <Pressable
             style={styles.fab}

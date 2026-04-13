@@ -14,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { usePostHogScreenViewed } from "@/lib/posthog";
 
 const TYPEWRITER_MS = 33;
 const LETTER_FADE_MS = 480;
@@ -171,6 +172,11 @@ const bar = StyleSheet.create({
 // ─── main screen ─────────────────────────────────────────────────────────────
 
 export default function Screen9() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen9",
+    component: "Screen9",
+    screen_number: 9,
+  });
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
 
   const fadeSubtitle = useRef(new Animated.Value(0)).current;

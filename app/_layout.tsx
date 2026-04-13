@@ -13,8 +13,10 @@ import {
 } from '@expo-google-fonts/instrument-serif';
 import { SpaceMono_400Regular } from '@expo-google-fonts/space-mono';
 import { Colors, Fonts } from '@/constants/theme';
+import { NativeModules } from 'react-native';
 import { configureMixedPlaybackAsync } from '@/lib/audio-playback';
 import Superwall from '@superwall/react-native-superwall';
+import { AppPostHogProvider } from '@/lib/posthog-provider';
 
 const SUPERWALL_API_KEY_IOS = 'pk_5L3AcVB9DaMbr9E9M79vc';
 
@@ -35,6 +37,7 @@ export default function RootLayout() {
   }, [loaded]);
 
   useEffect(() => {
+    NativeModules.AudioAPIModule?.disableSessionManagement?.();
     void configureMixedPlaybackAsync();
   }, []);
 
@@ -58,6 +61,7 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <AppPostHogProvider>
       <ThemeProvider value={theme}>
         <Stack
           screenOptions={{
@@ -65,6 +69,7 @@ export default function RootLayout() {
             headerTintColor: Colors.text,
             headerTitleStyle: { fontFamily: Fonts.serifBold },
             contentStyle: { backgroundColor: Colors.background },
+            gestureEnabled: false,
           }}>
           <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -81,6 +86,7 @@ export default function RootLayout() {
         </Stack>
         <StatusBar style="light" />
       </ThemeProvider>
+      </AppPostHogProvider>
     </GestureHandlerRootView>
   );
 }

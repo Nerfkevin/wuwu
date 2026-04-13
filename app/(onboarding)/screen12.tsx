@@ -15,6 +15,7 @@ import * as SecureStore from "expo-secure-store";
 import { requestRecordingPermissionsAsync } from "expo-audio";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { usePostHogScreenViewed } from "@/lib/posthog";
 import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 
 const { width, height } = Dimensions.get("window");
@@ -82,6 +83,11 @@ function FadeLetter({ ch, charStyle }: { ch: string; charStyle: object }) {
 type PermState = "idle" | "granted" | "denied";
 
 export default function Screen12() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen12",
+    component: "Screen12",
+    screen_number: 12,
+  });
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const [permState, setPermState] = useState<PermState>("idle");
   const [userName, setUserName] = useState("");

@@ -1,4 +1,5 @@
 import React, { memo, useEffect } from 'react';
+import { usePostHogScreenViewed } from '@/lib/posthog';
 import { Dimensions, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
@@ -48,17 +49,17 @@ const BILLS: BillConfig[] = Array.from({ length: 16 }, (_, i) => ({
   scale: 0.8 + Math.random() * 0.4,
 }));
 
-const BillItem = memo(({ cfg }: { cfg: BillConfig }) => {
+const BillItem = memo(({ cfg, speedMultiplier = 1, delayMultiplier }: { cfg: BillConfig; speedMultiplier?: number; delayMultiplier?: number }) => {
   const fallY = useSharedValue(FALL_FROM);
   const swing = useSharedValue(0);  // 0 → 1, alternating
   const flip = useSharedValue(0);   // 0 → 360, infinite
 
   useEffect(() => {
     fallY.value = withDelay(
-      cfg.delay,
+      cfg.delay / (delayMultiplier ?? speedMultiplier),
       withRepeat(
         withTiming(FALL_TO, {
-          duration: cfg.duration,
+          duration: cfg.duration / speedMultiplier,
           easing: Easing.in(Easing.quad),
         }),
         -1,
@@ -122,14 +123,22 @@ const BillItem = memo(({ cfg }: { cfg: BillConfig }) => {
     </Animated.View>
   );
 });
+BillItem.displayName = 'BillItem';
 
-const MakeItRain = memo(() => (
+const MakeItRain = memo(({ speedMultiplier = 1, delayMultiplier }: { speedMultiplier?: number; delayMultiplier?: number }) => {
+  usePostHogScreenViewed({
+    screen: 'session/make-it-rain',
+    component: 'MakeItRain',
+  });
+  return (
   <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
     {BILLS.map((cfg) => (
-      <BillItem key={cfg.id} cfg={cfg} />
+      <BillItem key={cfg.id} cfg={cfg} speedMultiplier={speedMultiplier} delayMultiplier={delayMultiplier} />
     ))}
   </View>
-));
+  );
+});
+MakeItRain.displayName = 'MakeItRain';
 
 export default MakeItRain;
 

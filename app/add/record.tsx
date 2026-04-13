@@ -13,8 +13,14 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Colors, Fonts, Layout } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
+import { usePostHogScreenViewed } from '@/lib/posthog';
 
 export default function RecordScreen() {
+  usePostHogScreenViewed({
+    screen: "add/record",
+    component: "RecordScreen",
+  });
+
   const router = useRouter();
   const { text } = useLocalSearchParams();
   const [isRecording, setIsRecording] = useState(false);

@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { usePostHogScreenViewed } from "@/lib/posthog";
 
 const { width, height } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -62,6 +63,11 @@ function FadeLetter({ ch, charStyle }: { ch: string; charStyle: object }) {
 }
 
 export default function Screen1() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen1",
+    component: "Screen1",
+    screen_number: 1,
+  });
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
 
   const fadeOrb = useRef(new Animated.Value(0)).current;

@@ -8,6 +8,7 @@ import { Colors, Fonts } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
 import { GlowPresets } from '@/constants/glow';
+import { usePostHogScreenViewed } from '@/lib/posthog';
 
 type PillarItem = {
   id: string;
@@ -114,6 +115,11 @@ function PillarCard({
 }
 
 export default function PillarScreen() {
+  usePostHogScreenViewed({
+    screen: "add/pillar",
+    component: "PillarScreen",
+  });
+
   const router = useRouter();
   const [selectedPillar, setSelectedPillar] = useState<string | null>(null);
   const [isWriteOwn, setIsWriteOwn] = useState(false);

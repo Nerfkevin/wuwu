@@ -10,6 +10,7 @@ import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
 import { Colors, Fonts } from '@/constants/theme';
 import { GlowPresets } from '@/constants/glow';
 import StreakPill from '@/components/StreakPill';
+import { usePostHogScreenViewed } from '@/lib/posthog';
 
 const { width } = Dimensions.get('window');
 const BUTTON_SIZE = width * 0.55;
@@ -30,6 +31,11 @@ function formatDate(d: Date) {
 const TAB_BAR_H = 15;
 
 export default function HomeScreen() {
+  usePostHogScreenViewed({
+    screen: "tabs/home",
+    component: "HomeScreen",
+  });
+
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const todayLabel = formatDate(new Date());
@@ -159,7 +165,7 @@ export default function HomeScreen() {
             preset={GlowPresets.chakra(
               BUTTON_SIZE / 2,
               [
-                '#3D0F6B',
+                '#A855F7',
                 '#5B21B6',
                 '#7C3AED',
                 '#5B21B6',
@@ -171,7 +177,7 @@ export default function HomeScreen() {
                 '#5B21B6',
                 '#7C3AED',
                 '#5B21B6',
-                '#3D0F6B',
+                '#A855F7',
               ],
               30,
               30

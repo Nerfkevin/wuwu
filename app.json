@@ -32,6 +32,7 @@
     },
     "plugins": [
       "expo-router",
+      "posthog-react-native/expo",
       [
         "expo-splash-screen",
         {
@@ -64,7 +65,8 @@
       "expo-image",
       "expo-secure-store",
       "expo-web-browser",
-      "expo-asset"
+      "expo-asset",
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true,

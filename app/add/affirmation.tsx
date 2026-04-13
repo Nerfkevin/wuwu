@@ -8,6 +8,7 @@ import { Colors, Fonts } from '@/constants/theme';
 import { AFFIRMATION_PILLARS, PillarKey } from '@/constants/affirmations';
 import AnimatedGlow from '@/lib/animated-glow';
 import { GlowPresets } from '@/constants/glow';
+import { usePostHogScreenViewed } from '@/lib/posthog';
 
 const normalizeParam = (value?: string | string[]) =>
   Array.isArray(value) ? value[0] : value;
@@ -22,6 +23,11 @@ const PILLAR_SHORT: Record<string, string> = {
 };
 
 export default function AffirmationScreen() {
+  usePostHogScreenViewed({
+    screen: "add/affirmation",
+    component: "AffirmationScreen",
+  });
+
   const router = useRouter();
   const params = useLocalSearchParams<{ pillar?: string }>();
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null);

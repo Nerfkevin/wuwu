@@ -20,6 +20,7 @@ import Superwall, {
 } from "@superwall/react-native-superwall";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { usePostHog, usePostHogScreenViewed } from "@/lib/posthog";
 
 const ONBOARDING_KEY = "onboarding_completed";
 const SUBSCRIPTION_KEY = "subscription_active";
@@ -31,43 +32,73 @@ const FADE_HEIGHT = 56;
 
 const TESTIMONIALS = [
   {
-    name: "Jacob C.",
+    title: "FINALLY!!",
     quote:
       "\u201cAfter two weeks of using my own voice for self-worth affirmations, I stopped second guessing every decision. It\u2019s like my inner critic finally got quiet, I feel lighter than I have in years.\u201d",
   },
   {
-    name: "Kervin N.",
+    title: "my own voice hits different",
+    quote: "\u201cHearing my own voice say it finally stuck. Simple as that.\u201d",
+  },
+  {
+    title: "the only thing that helped me manifest wealth",
     quote:
       "\u201cI was skeptical, but layering my abundance messages under 528 Hz while I work changed everything. Money started showing up in unexpected ways and I\u2019m no longer stressed about bills.\u201d",
   },
   {
-    name: "Renesmee S.",
+    title: "game changer",
+    quote: "\u201cFive minutes a day. Way less spiraling. I\u2019m in.\u201d",
+  },
+  {
+    title: "stopped feeling so alone",
     quote:
       "\u201cNGL recording love affirmations in my voice felt weird at first, but now I catch myself smiling more around people. The loneliness is fading and I actually believe I\u2019m worthy of real connection.\u201d",
   },
   {
-    name: "Marcus T.",
+    title: "instant calm??",
+    quote: "\u201cWeirdly calming. Like a reset button for my brain.\u201d",
+  },
+  {
+    title: "closed more deals idk",
     quote:
       "\u201cI play my confidence affirmations every morning before client calls. My close rate went up, my anxiety went down. Hearing my own voice say \u2018you\u2019re enough\u2019 actually lands differently than reading it.\u201d",
   },
   {
-    name: "Priya L.",
+    title: "first app I didn\u2019t delete",
+    quote: "\u201cOnly thing I\u2019ve kept up longer than a week this year.\u201d",
+  },
+  {
+    title: "kinder in the mirror fr",
     quote:
       "\u201cStruggled with body image for years. Three weeks in and I genuinely catch myself being kinder in the mirror. It\u2019s not magic\u2014it\u2019s just me, finally believing the things I\u2019ve always wanted to believe.\u201d",
   },
   {
-    name: "Dante R.",
+    title: "okay it\u2019s not corny",
+    quote: "\u201cSounds corny until you try it. Then it hits.\u201d",
+  },
+  {
+    title: "nothing else ever stuck",
     quote:
       "\u201cI\u2019ve tried journaling, therapy apps, meditation. Nothing stuck like this. There\u2019s something about your own voice that bypasses all the resistance. Wu-Wu is the only habit I\u2019ve kept for more than a month.\u201d",
+  },
+  {
+    title: "morning routine = unlocked",
+    quote: "\u201cMorning routine upgrade. That\u2019s the whole review.\u201d",
   },
 ];
 
 export default function Screen21() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen21",
+    component: "Screen21",
+    screen_number: 21,
+  });
   const { contentOpacity, fadeIn } = useOnboardingNav();
   const router = useRouter();
   const headerAnim = useRef(new Animated.Value(0)).current;
   const listAnim = useRef(new Animated.Value(0)).current;
   const [isHandled, setIsHandled] = useState(false);
+  const ph = usePostHog();
 
   useEffect(() => {
     // Mark onboarding as seen — app will return here on next launch until subscribed
@@ -94,9 +125,36 @@ export default function Screen21() {
 
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
+    try {
+      ph?.capture("paywall_register_started", {
+        placement: "campaign_trigger",
+        component: "Screen21",
+      });
+      void ph?.flush();
+    } catch {}
+
     const handler = new PaywallPresentationHandler();
 
+    handler.onPresent(() => {
+      try {
+        ph?.capture("paywall_presented", {
+          placement: "campaign_trigger",
+          screen: "paywall/campaign_trigger",
+          component: "Screen21",
+        });
+        void ph?.flush();
+      } catch {}
+    });
+
     handler.onDismiss((_info, result) => {
+      try {
+        ph?.capture("paywall_dismissed", {
+          placement: "campaign_trigger",
+          result: result.type,
+          component: "Screen21",
+        });
+        void ph?.flush();
+      } catch {}
       if (result.type === "purchased" || result.type === "restored") {
         void SecureStore.setItemAsync(SUBSCRIPTION_KEY, "true");
         router.replace("/(tabs)" as any);
@@ -107,6 +165,14 @@ export default function Screen21() {
     });
 
     handler.onSkip((reason) => {
+      try {
+        ph?.capture("paywall_skipped", {
+          placement: "campaign_trigger",
+          reason: reason.constructor?.name ?? "unknown",
+          component: "Screen21",
+        });
+        void ph?.flush();
+      } catch {}
       if (reason instanceof PaywallSkippedReasonUserIsSubscribed) {
         // Already subscribed — go straight to tabs
         void SecureStore.setItemAsync(SUBSCRIPTION_KEY, "true");
@@ -117,7 +183,15 @@ export default function Screen21() {
       }
     });
 
-    handler.onError((_error) => {
+    handler.onError((error) => {
+      try {
+        ph?.capture("paywall_error", {
+          placement: "campaign_trigger",
+          error: String(error),
+          component: "Screen21",
+        });
+        void ph?.flush();
+      } catch {}
       setIsHandled(false);
     });
 
@@ -129,14 +203,26 @@ export default function Screen21() {
     }
   };
 
+  const handleRestartOnboarding = async () => {
+    await SecureStore.deleteItemAsync(ONBOARDING_KEY);
+    router.replace("/(onboarding)/screen1" as any);
+  };
+
   return (
     <Animated.View style={[styles.container, { opacity: contentOpacity }]}>
       <SafeAreaView style={styles.safeArea}>
         {/* ── Fixed header ── */}
         <Animated.View style={[styles.header, { opacity: headerAnim }]}>
-          <Text style={styles.title}>
-            Wu-Wu was designed for{"\n"}people like you ❤️
-          </Text>
+          <TouchableOpacity
+            onPress={handleRestartOnboarding}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Restart onboarding"
+          >
+            <Text style={styles.title}>
+              Wu-Wu was designed for{"\n"}people like you ❤️
+            </Text>
+          </TouchableOpacity>
           <Text style={styles.subtitle}>reviews from people using Wu-Wu.</Text>
 
           {/* Wreath */}
@@ -158,7 +244,7 @@ export default function Screen21() {
             {TESTIMONIALS.map((t, i) => (
               <View key={i} style={styles.card}>
                 <View style={styles.cardHeader}>
-                  <Text style={styles.name}>{t.name}</Text>
+                  <Text style={styles.cardTitle}>{t.title}</Text>
                   <Image
                     source={require("@/assets/images/onboarding/fivestar.png")}
                     style={styles.cardStars}
@@ -192,16 +278,6 @@ export default function Screen21() {
             style={styles.joinButton}
           >
             <Text style={styles.joinText}>join Wu-Wu 🙏</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={async () => {
-              await SecureStore.deleteItemAsync(ONBOARDING_KEY);
-              router.replace("/(onboarding)/screen1" as any);
-            }}
-            activeOpacity={0.6}
-            style={styles.restartButton}
-          >
-            <Text style={styles.restartText}>restart onboarding</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -283,11 +359,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 10,
   },
-  name: {
-    fontSize: isSmallDevice ? 18 : 21,
+  cardTitle: {
+    flex: 1,
+    marginRight: 12,
+    fontSize: isSmallDevice ? 16 : 18,
     color: "#fff",
     fontFamily: Fonts.serif,
     fontWeight: "700",
+    lineHeight: isSmallDevice ? 22 : 24,
   },
   cardStars: {
     width: 110,
@@ -317,16 +396,5 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.mono,
     color: "#000",
     letterSpacing: 0.3,
-  },
-  restartButton: {
-    alignItems: "center",
-    paddingVertical: 12,
-    marginTop: 4,
-  },
-  restartText: {
-    fontSize: 13,
-    fontFamily: Fonts.mono,
-    color: "rgba(255,255,255,0.35)",
-    letterSpacing: 0.2,
   },
 });

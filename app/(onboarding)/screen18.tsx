@@ -13,6 +13,7 @@ import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { usePostHogScreenViewed } from "@/lib/posthog";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -71,6 +72,11 @@ const OPTIONS = [
 const QUESTION = "how committed are you\nto manifesting your\ndream life?";
 
 export default function Screen18() {
+  usePostHogScreenViewed({
+    screen: "onboarding/screen18",
+    component: "Screen18",
+    screen_number: 18,
+  });
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const [selected, setSelected] = useState<string | null>(null);
   const fadeContinue = useRef(new Animated.Value(0)).current;
