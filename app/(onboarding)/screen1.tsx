@@ -128,7 +128,7 @@ export default function Screen1() {
   }, [heyTypeDone]);
 
   const handleContinue = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     navigateTo("/(onboarding)/screen2");
   };
 

@@ -149,7 +149,7 @@ export default function Screen19() {
 
   const handleContinue = () => {
     if (!bodyDone) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     navigateTo("/(onboarding)/screen20");
   };
 

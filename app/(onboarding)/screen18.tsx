@@ -162,7 +162,7 @@ export default function Screen18() {
 
   const handleContinue = async () => {
     if (!selected) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     await AsyncStorage.setItem("onboarding_commitment", selected);
     navigateTo("/(onboarding)/screen19");
   };

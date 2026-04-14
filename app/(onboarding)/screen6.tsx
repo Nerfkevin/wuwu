@@ -209,9 +209,11 @@ const frequencyMap: Record<string, number> = {
 };
 
 const durationMap: Record<string, number> = {
-  "Under a minute": 0.5,
+  "Just a moment": 0.5,
+  "A few minutes": 3,
+  "5–15 minutes": 10,
   "15–30 minutes": 22,
-  "30 minutes to 1 hour": 45,
+  "30–60 minutes": 45,
   "1–2 hours": 90,
   "Almost constant": 180,
 };
@@ -250,7 +252,7 @@ export default function Screen6() {
   const [slide, setSlide] = useState<0 | 1>(0);
   const [dailyHours, setDailyHours] = useState<number | null>(null);
   const [yearlyDays, setYearlyDays] = useState(0);
-  const [lifetimeYears, setLifetimeYears] = useState(0);
+  const [lifetimeDays, setLifetimeDays] = useState(0);
   const [name, setName] = useState("");
   const [heavyReason, setHeavyReason] = useState("your dreams");
 
@@ -291,10 +293,10 @@ export default function Screen6() {
   const slide1Para3 = useMemo(
     (): Seg[] => [
       { text: "or " },
-      { text: `${lifetimeYears} years`, bold: true },
+      { text: `${lifetimeDays.toLocaleString()} days`, bold: true },
       { text: " over your lifetime..." },
     ],
-    [lifetimeYears]
+    [lifetimeDays]
   );
 
   const slide1Para4 = useMemo(
@@ -367,11 +369,11 @@ export default function Screen6() {
       const yearlyHours = (dailyMinutes * 365) / 60;
       const yDays = yearlyHours / 24;
       const yearsRemaining = 80 - age;
-      const lYears = (yearlyHours * yearsRemaining) / (24 * 365);
+      const lDays = (yearlyHours * yearsRemaining) / 24;
 
       setDailyHours(dHours);
       setYearlyDays(Math.round(yDays));
-      setLifetimeYears(parseFloat(lYears.toFixed(1)));
+      setLifetimeDays(Math.round(lDays));
     })();
   }, []);
 
@@ -399,7 +401,7 @@ export default function Screen6() {
   const advanceS2 = () => setS2Phase((p) => p + 1);
 
   const goToSlide2 = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
     Animated.parallel([
       Animated.timing(slide1Opacity, { toValue: 0, duration: 500, useNativeDriver: true }),
@@ -416,7 +418,7 @@ export default function Screen6() {
     if (slide === 0) {
       goToSlide2();
     } else {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       navigateTo("/(onboarding)/screen7");
     }
   };
@@ -585,9 +587,9 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     justifyContent: "flex-start",
-    paddingTop: isSmallDevice ? 60 : 80,
+    paddingTop: isSmallDevice ? 60 : 60,
     paddingHorizontal: isSmallDevice ? 28 : 36,
-    gap: isSmallDevice ? 28 : 36,
+    gap: isSmallDevice ? 28 : 34,
   },
   para1: {
     fontSize: isSmallDevice ? 26 : 30,

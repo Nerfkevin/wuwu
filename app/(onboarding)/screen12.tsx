@@ -217,7 +217,7 @@ export default function Screen12() {
   };
 
   const handleUnlock = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     const result = await requestRecordingPermissionsAsync();
     if (result.granted) {
       swapPill(() => setPermState("granted"));
@@ -232,11 +232,6 @@ export default function Screen12() {
   const handleOpenSettings = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     Linking.openSettings();
-  };
-
-  const handleSkip = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigateTo("/(onboarding)/screen13");
   };
 
   const pillText =
@@ -297,9 +292,6 @@ export default function Screen12() {
             <View style={styles.deniedActions}>
               <TouchableOpacity onPress={handleOpenSettings} activeOpacity={0.85} style={styles.settingsBtn}>
                 <Text style={styles.settingsBtnText}>open settings</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleSkip} activeOpacity={0.7} style={styles.skipRow}>
-                <Text style={styles.skipText}>continue without microphone →</Text>
               </TouchableOpacity>
             </View>
           </Animated.View>
@@ -448,7 +440,6 @@ const styles = StyleSheet.create({
   },
   deniedActions: {
     width: "100%",
-    gap: 14,
     alignItems: "center",
   },
   settingsBtn: {
@@ -465,14 +456,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 0.5,
   },
-  skipRow: { paddingVertical: 8 },
-  skipText: {
-    fontSize: isSmallDevice ? 13 : 15,
-    color: "rgba(255,255,255,0.55)",
-    fontFamily: Fonts.mono,
-    letterSpacing: 0.2,
-  },
-
   // ── overlay ──
   overlay: {
     ...StyleSheet.absoluteFillObject,

@@ -126,7 +126,7 @@ const slides: Slide[] = [
     id: "4",
     image: require("@/assets/images/orb.png"),
     segments: [
-      { text: "once you've rewired your beliefs, watch as your dream life " },
+      { text: "once you've rewired your subconcious beliefs, watch as your dream life " },
       { text: "unfold.", bold: true },
     ],
   },
@@ -269,7 +269,7 @@ export default function Screen2() {
   );
 
   const handleArrow = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     if (activeIndex < slides.length - 1) {
       const next = activeIndex + 1;
       listRef.current?.scrollToIndex({ index: next, animated: true });

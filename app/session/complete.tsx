@@ -13,7 +13,7 @@ import * as Haptics from 'expo-haptics';
 import LottieView from 'lottie-react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Fonts } from '@/constants/theme';
-import { formatHoursPlayed } from '@/lib/profile-stats';
+import { formatPlayTime } from '@/lib/profile-stats';
 import { updateStreakOnSession } from '@/lib/streak-utils';
 import { createAudioPlayer } from '@/lib/expo-audio';
 import { usePostHogScreenViewed } from '@/lib/posthog';
@@ -78,10 +78,8 @@ export default function SessionCompleteScreen() {
   const prevSessions = Number(prevSessionCount ?? 0);
   const newSessions = prevSessions + 1;
 
-  const prevHours = parseFloat(formatHoursPlayed(prevMs));
-  const newHours = parseFloat(formatHoursPlayed(newMs));
-
-  const [displayHours, setDisplayHours] = useState(prevHours.toFixed(1));
+  const [displayHours, setDisplayHours] = useState(formatPlayTime(prevMs).value);
+  const [displayHoursLabel, setDisplayHoursLabel] = useState(formatPlayTime(prevMs).label);
   const [displaySessions, setDisplaySessions] = useState(String(prevSessions));
   const [streak, setStreak] = useState(0);
   const [streakBefore, setStreakBefore] = useState(0);
@@ -137,7 +135,10 @@ export default function SessionCompleteScreen() {
         const rawProgress = Math.min(elapsed / COUNT_DURATION, 1);
         const t = 1 - Math.pow(1 - rawProgress, 3);
 
-        setDisplayHours((prevHours + (newHours - prevHours) * t).toFixed(1));
+        const msNow = prevMs + (newMs - prevMs) * t;
+        const fmt = formatPlayTime(msNow);
+        setDisplayHours(fmt.value);
+        setDisplayHoursLabel(fmt.label);
         setDisplaySessions(String(Math.round(prevSessions + (newSessions - prevSessions) * t)));
 
         if (now - lastHaptic > HAPTIC_INTERVAL_MS) {
@@ -320,7 +321,7 @@ export default function SessionCompleteScreen() {
             <View style={styles.statRow}>
               <View style={styles.statItem}>
                 <Text style={styles.statNumber}>{displayHours}</Text>
-                <Text style={styles.statLabel}>Hours Played</Text>
+                <Text style={styles.statLabel}>{displayHoursLabel}</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>

@@ -344,7 +344,7 @@ export default function Screen10() {
   );
 
   const handleContinue = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     if (activeIndex < SLIDES.length - 1) {
       const next = activeIndex + 1;
       listRef.current?.scrollToIndex({ index: next, animated: true });

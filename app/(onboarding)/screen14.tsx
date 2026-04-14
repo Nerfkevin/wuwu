@@ -19,11 +19,11 @@ import { usePostHogScreenViewed } from "@/lib/posthog";
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
 
-// ─── background — same red palette as screen10 ───────────────────────────────
+// ─── background — purple / indigo mesh (onboarding family) ───────────────────
 const BG_COLORS = [
-  "#100018", "#18002a", "#0e0014",
-  "#0a0010", "#160022", "#0e0014",
-  "#07000e", "#0e001a", "#0a0010",
+  "#1A0A30", "#160720", "#120530",
+  "#1C1035", "#0E061A", "#120830",
+  "#080220", "#0C0828", "#07041A",
 ];
 const BG_POINTS: [number, number][] = [
   [0.0, 0.0], [0.5, 0.0], [1.0, 0.0],
@@ -61,9 +61,9 @@ function ProgressRing({ progressAnim }: { progressAnim: Animated.Value }) {
     >
       <Defs>
         <LinearGradient id="arcGrad14" x1="0%" y1="0%" x2="100%" y2="0%">
-          <Stop offset="0%" stopColor="#FF2800" />
-          <Stop offset="50%" stopColor="#FF5500" />
-          <Stop offset="100%" stopColor="#FF8C00" />
+          <Stop offset="0%" stopColor="#F5D0FE" />
+          <Stop offset="45%" stopColor="#E879F9" />
+          <Stop offset="100%" stopColor="#4338CA" />
         </LinearGradient>
       </Defs>
       <Circle
@@ -145,7 +145,7 @@ const dotStyles = StyleSheet.create({
   },
   fill: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#22C55E",
+    backgroundColor: "#A78BFA",
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",

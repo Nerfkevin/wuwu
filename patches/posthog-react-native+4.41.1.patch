@@ -1,0 +1,23 @@
+diff --git a/node_modules/posthog-react-native/tooling/posthog-xcode.sh b/node_modules/posthog-react-native/tooling/posthog-xcode.sh
+index 8673c0c..79edb25 100644
+--- a/node_modules/posthog-react-native/tooling/posthog-xcode.sh
++++ b/node_modules/posthog-react-native/tooling/posthog-xcode.sh
+@@ -88,6 +88,18 @@ if [[ "$SKIP_BUNDLING" ]]; then
+ fi
+ set -x -e
+ 
++# Skip Hermes/sourcemap upload when explicitly disabled or PostHog CLI has nothing to auth with
++set +x +e
++if [[ -n "${POSTHOG_SKIP_SYMBOL_UPLOAD:-}" ]]; then
++  echo "PostHog: POSTHOG_SKIP_SYMBOL_UPLOAD set; skipping sourcemap upload."
++  exit 0
++fi
++if [[ ! -f "$HOME/.posthog/credentials.json" ]] && [[ -z "${POSTHOG_CLI_API_KEY:-}" ]] && [[ -z "${POSTHOG_CLI_TOKEN:-}" ]]; then
++  echo "PostHog: no ~/.posthog/credentials.json and no POSTHOG_CLI_API_KEY; skipping sourcemap upload."
++  exit 0
++fi
++set -x -e
++
+ # Execute posthog cli clone
+ set +x +e
+ CLI_CLONE_OUTPUT=$(/bin/sh -c "$PH_CLI_PATH exp hermes clone --minified-map-path $SOURCEMAP_PACKAGER_FILE --composed-map-path $SOURCEMAP_FILE" 2>&1)

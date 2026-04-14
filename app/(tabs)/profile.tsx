@@ -16,7 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import * as SecureStore from 'expo-secure-store';
 import { getSavedRecordings } from '@/lib/recording-store';
-import { formatHoursPlayed, getProfileStats } from '@/lib/profile-stats';
+import { formatPlayTime, getProfileStats } from '@/lib/profile-stats';
 import * as StoreReview from 'expo-store-review';
 import {
   openBrowserAsync,
@@ -68,7 +68,8 @@ export default function ProfileScreen() {
   });
 
   const [userName, setUserName] = useState<string | null>(null);
-  const [hoursPlayed, setHoursPlayed] = useState('0');
+  const [playTimeValue, setPlayTimeValue] = useState('0:00');
+  const [playTimeLabel, setPlayTimeLabel] = useState('Minutes Played');
   const [sessionCount, setSessionCount] = useState('0');
   const [recordedCount, setRecordedCount] = useState('0');
   const [micModalOpen, setMicModalOpen] = useState(false);
@@ -85,7 +86,9 @@ export default function ProfileScreen() {
       ]).then(([n, stats, recordings, micPref]) => {
         if (cancelled) return;
         setUserName(n);
-        setHoursPlayed(formatHoursPlayed(stats.totalPlayMs));
+        const pt = formatPlayTime(stats.totalPlayMs);
+        setPlayTimeValue(pt.value);
+        setPlayTimeLabel(pt.label);
         setSessionCount(String(stats.sessionCount));
         setRecordedCount(String(recordings.length));
         setMicSummary(micPref?.name ?? null);
@@ -122,8 +125,8 @@ export default function ProfileScreen() {
       <View style={styles.statsContainer}>
         <View style={[styles.statSide, styles.statSideLeft]}>
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{hoursPlayed}</Text>
-            <Text style={styles.statLabel}>Hours Played</Text>
+            <Text style={styles.statNumber}>{playTimeValue}</Text>
+            <Text style={styles.statLabel}>{playTimeLabel}</Text>
           </View>
         </View>
         <View style={styles.statCenter}>

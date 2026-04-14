@@ -147,7 +147,7 @@ export default function Screen4() {
   }, [headingDone]);
 
   const handleContinue = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     navigateTo("/(onboarding)/screen5");
   };
 

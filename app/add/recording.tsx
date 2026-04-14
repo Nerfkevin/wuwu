@@ -5,6 +5,7 @@ import {
   View,
   TouchableOpacity,
   Animated,
+  Easing,
   TextInput,
   Keyboard,
   KeyboardAvoidingView,
@@ -12,6 +13,44 @@ import {
   Modal,
   ActivityIndicator,
 } from 'react-native';
+
+function ScaleBtn({
+  onPress,
+  onPressIn,
+  onPressOut,
+  disabled,
+  style,
+  children,
+  scaleTo = 0.88,
+}: {
+  onPress?: () => void;
+  onPressIn?: () => void;
+  onPressOut?: () => void;
+  disabled?: boolean;
+  style?: object | object[];
+  children: React.ReactNode;
+  scaleTo?: number;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const handlePressIn = () => {
+    Animated.spring(scale, { toValue: scaleTo, useNativeDriver: true, speed: 50, bounciness: 0 }).start();
+    onPressIn?.();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 30, bounciness: 6 }).start();
+    onPressOut?.();
+  };
+  // Pull flex/layout off the style array so it sits on the TouchableOpacity
+  const styleArr = Array.isArray(style) ? style : style ? [style] : [];
+  const flatStyle = StyleSheet.flatten(styleArr) as Record<string, unknown>;
+  const { flex, flexGrow, flexShrink, flexBasis, alignSelf, ...innerStyle } = flatStyle;
+  const outerStyle = { flex, flexGrow, flexShrink, flexBasis, alignSelf } as object;
+  return (
+    <TouchableOpacity onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut} disabled={disabled} activeOpacity={1} style={outerStyle}>
+      <Animated.View style={[innerStyle, { transform: [{ scale }] }]}>{children}</Animated.View>
+    </TouchableOpacity>
+  );
+}
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -106,6 +145,8 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
   );
   const [isComposing, setIsComposing] = useState(shouldStartInCompose);
   const composeTransition = useRef(new Animated.Value(shouldStartInCompose ? 0 : 1)).current;
+  const recordIconPulse = useRef(new Animated.Value(0)).current;
+  const recordIconGlow = useRef(new Animated.Value(0)).current;
 
   const pillarKey = useMemo(() => {
     const raw = normalizeParam(params.pillar);
@@ -227,6 +268,70 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
       useNativeDriver: true,
     }).start();
   }, [hasRecorded, transition]);
+
+  const shouldPulseRecordMic =
+    !isComposing && !hasRecorded && !recorderState.isRecording && !isApplyingEnhance;
+
+  useEffect(() => {
+    if (!shouldPulseRecordMic) {
+      recordIconPulse.stopAnimation();
+      recordIconPulse.setValue(0);
+      recordIconGlow.stopAnimation();
+      recordIconGlow.setValue(0);
+      return;
+    }
+
+    const shake = Animated.loop(
+      Animated.sequence([
+        Animated.delay(1200),
+        Animated.timing(recordIconPulse, { toValue: 1, duration: 80, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(recordIconPulse, { toValue: -1, duration: 80, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(recordIconPulse, { toValue: 1, duration: 80, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(recordIconPulse, { toValue: -1, duration: 80, easing: Easing.linear, useNativeDriver: true }),
+        Animated.timing(recordIconPulse, { toValue: 0, duration: 60, easing: Easing.linear, useNativeDriver: true }),
+      ])
+    );
+
+    const glow = Animated.loop(
+      Animated.sequence([
+        Animated.timing(recordIconGlow, {
+          toValue: 1,
+          duration: 950,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(recordIconGlow, {
+          toValue: 0,
+          duration: 950,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    shake.start();
+    glow.start();
+    return () => {
+      shake.stop();
+      glow.stop();
+    };
+  }, [shouldPulseRecordMic, recordIconGlow, recordIconPulse]);
+
+  const recordMicAnimStyle = useMemo(
+    () => ({
+      opacity: recordIconGlow.interpolate({ inputRange: [0, 1], outputRange: [0.38, 1] }),
+      transform: [
+        {
+          rotate: recordIconPulse.interpolate({
+            inputRange: [-1, 0, 1],
+            outputRange: ['-22deg', '0deg', '22deg'],
+          }),
+        },
+        { scale: recordIconGlow.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1.14] }) },
+      ],
+    }),
+    [recordIconGlow, recordIconPulse]
+  );
 
   useEffect(() => {
     const context = new AudioContext();
@@ -411,7 +516,6 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
       buffer: getTrimmedBuffer(bufferForPreview),
       withEcho: effects.echo,
       withReverb: effects.reverb,
-      reverbGain: 5,
     });
   };
 
@@ -698,7 +802,6 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
         buffer: getTrimmedBuffer(bufferForExport),
         withEcho: effects.echo,
         withReverb: effects.reverb,
-        reverbGain: 5,
       });
       if (processedPath) {
         uriToSave = processedPath;
@@ -828,31 +931,45 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
               { opacity: recordingOpacity, transform: [{ translateY: recordingTranslate }] },
             ]}
           >
+            <View style={styles.recordingCenter}>
             <AnimatedGlow
               preset={GlowPresets.chakra(40, [recordColor, recordColor], 8, 12)}
               activeState={glowState}
             >
-              <TouchableOpacity
+              <ScaleBtn
                 style={styles.recordButton}
                 disabled={isApplyingEnhance}
                 onPress={toggleRecording}
                 onPressIn={() => setGlowState('press')}
                 onPressOut={() => setGlowState('default')}
+                scaleTo={0.85}
               >
-                <Ionicons
-                  name={recorderState.isRecording ? 'stop' : 'mic'}
-                  size={28}
-                  color="#000"
-                />
-              </TouchableOpacity>
+                <Animated.View style={shouldPulseRecordMic ? recordMicAnimStyle : undefined}>
+                  <Ionicons
+                    name={recorderState.isRecording ? 'stop' : 'mic'}
+                    size={28}
+                    color="#000"
+                  />
+                </Animated.View>
+              </ScaleBtn>
             </AnimatedGlow>
-            <Text style={styles.hintText}>
-              {isApplyingEnhance
-                ? 'processing...'
-                : recorderState.isRecording
-                  ? 'recording...'
-                  : 'tap to record your affirmation'}
-            </Text>
+              <Text style={styles.hintText}>
+                {isApplyingEnhance
+                  ? 'processing...'
+                  : recorderState.isRecording
+                    ? 'recording...'
+                    : 'tap to record your affirmation'}
+              </Text>
+            </View>
+            {!hasRecorded && !isComposing && !isApplyingEnhance && !recorderState.isRecording ? (
+              <View style={styles.recordTipBox}>
+                <View style={styles.recordTipInner}>
+                  <Text style={styles.recordTipText}>
+                    Find a quiet place to record — you can always re-record later.
+                  </Text>
+                </View>
+              </View>
+            ) : null}
           </Animated.View>
 
           <Animated.View
@@ -876,15 +993,15 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
               />
 
               <View style={styles.playButtonRow}>
-                <TouchableOpacity style={styles.playButton} onPress={togglePlayback}>
+                <ScaleBtn style={styles.playButton} onPress={togglePlayback} scaleTo={0.85}>
                   <Ionicons name={isPlaying ? 'pause' : 'play'} size={22} color="#FFFFFF" />
-                </TouchableOpacity>
+                </ScaleBtn>
               </View>
             </View>
 
             <View style={styles.reviewBottom}>
               <View style={styles.effectsRow}>
-                <TouchableOpacity
+                <ScaleBtn
                   style={[styles.effectBtn, effects.enhance && styles.effectBtnEnhanceActive]}
                   onPress={() => toggleEffect('enhance')}
                 >
@@ -895,8 +1012,8 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
                     color={effects.enhance ? '#CDB6FF' : 'rgba(255,255,255,0.28)'}
                   />
                   <Text style={[styles.effectText, effects.enhance && styles.effectTextEnhanceActive]}>Enhance</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
+                </ScaleBtn>
+                <ScaleBtn
                   style={[styles.effectBtn, effects.echo && styles.effectBtnEchoActive]}
                   onPress={() => toggleEffect('echo')}
                 >
@@ -907,8 +1024,8 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
                     color={effects.echo ? '#A9D7FF' : 'rgba(255,255,255,0.28)'}
                   />
                   <Text style={[styles.effectText, effects.echo && styles.effectTextEchoActive]}>Echo</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
+                </ScaleBtn>
+                <ScaleBtn
                   style={[styles.effectBtn, effects.reverb && styles.effectBtnReverbActive]}
                   onPress={() => toggleEffect('reverb')}
                 >
@@ -919,13 +1036,13 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
                     color={effects.reverb ? '#FFB39F' : 'rgba(255,255,255,0.28)'}
                   />
                   <Text style={[styles.effectText, effects.reverb && styles.effectTextReverbActive]}>Reverb</Text>
-                </TouchableOpacity>
+                </ScaleBtn>
               </View>
 
               <View style={styles.actionsRow}>
-                <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
-                  <Ionicons name="trash-outline" size={26} color={Colors.textSecondary} />
-                </TouchableOpacity>
+                <ScaleBtn style={styles.deleteBtn} onPress={handleDelete} scaleTo={0.82}>
+                  <Ionicons name="trash-outline" size={26} color="#FF3B30" />
+                </ScaleBtn>
                 <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
                   <Text style={styles.saveText}>{isApplyingEnhance ? 'Applying...' : 'Save'}</Text>
                 </TouchableOpacity>
@@ -1030,6 +1147,11 @@ const styles = StyleSheet.create({
     color: '#000000',
   },
   recordingLayer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recordingCenter: {
     alignItems: 'center',
     gap: 16,
   },
@@ -1064,6 +1186,30 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.mono,
     fontSize: 14,
     color: Colors.text,
+    textAlign: 'center',
+  },
+  recordTipBox: {
+    position: 'absolute',
+    bottom: 32,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: 14,
+  },
+  recordTipInner: {
+    maxWidth: 300,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  recordTipText: {
+    fontFamily: Fonts.mono,
+    fontSize: 11,
+    lineHeight: 16,
+    color: 'rgba(255,255,255,0.45)',
     textAlign: 'center',
   },
   playButtonRow: {

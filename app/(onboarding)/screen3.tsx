@@ -155,7 +155,7 @@ export default function Screen3() {
 
   const handleContinue = async () => {
     if (!name.trim()) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     Keyboard.dismiss();
     await SecureStore.setItemAsync("user_name", name.trim());
     navigateTo("/(onboarding)/screen4");

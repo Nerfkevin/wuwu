@@ -123,7 +123,7 @@ export default function Screen21() {
     if (isHandled) return;
     setIsHandled(true);
 
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
     try {
       ph?.capture("paywall_register_started", {

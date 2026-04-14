@@ -44,16 +44,17 @@ const INTRO_MS = 5000;
 const GAP_MS = 5000;
 const MAX_TRACKS = 3;
 
+/** Solfeggio Hz → accent: light pink/lavender (low) → deep indigo (high) */
 const FREQ_COLORS: Record<string, string> = {
-  '174': Colors.chakra.red,
-  '285': Colors.chakra.orange,
-  '396': Colors.chakra.yellow,
-  '417': Colors.chakra.green,
-  '528': Colors.chakra.blue,
-  '639': '#8B5CF6',
-  '741': Colors.chakra.indigo,
-  '852': Colors.chakra.violet,
-  '963': Colors.chakra.violet,
+  '174': '#F5D0FE',
+  '285': '#F0ABFC',
+  '396': '#E879F9',
+  '417': '#D946EF',
+  '528': '#C084FC',
+  '639': '#A855F7',
+  '741': '#818CF8',
+  '852': '#6366F1',
+  '963': '#4338CA',
 };
 
 type SessionSettings = { freq: string; bg: string; brainwave: string };
@@ -117,14 +118,14 @@ export default function Screen15() {
 
   const [displayMessage, setDisplayMessage] = useState('');
   const [cardGlowState, setCardGlowState] = useState<GlowEvent>('default');
-  const [resolvedCardColor, setResolvedCardColor] = useState<string>(Colors.chakra.blue);
+  const [resolvedCardColor, setResolvedCardColor] = useState<string>('#A855F7');
   const [cardColorRange, setCardColorRange] = useState({
-    from: Colors.chakra.blue,
-    to: Colors.chakra.blue,
+    from: '#A855F7',
+    to: '#A855F7',
   });
 
   // ─── Derived values ───────────────────────────────────────────────────────
-  const selectedColor = FREQ_COLORS[settings.freq] ?? Colors.chakra.blue;
+  const selectedColor = FREQ_COLORS[settings.freq] ?? '#A855F7';
   const shouldPlayBrainwave = settings.bg === 'Brainwaves';
   const shouldPlayPure = settings.bg === 'Pure';
 
@@ -537,11 +538,11 @@ export default function Screen15() {
             <View style={styles.headerLeftCol}>
               <LinearGradient
                 colors={[
-                  'rgba(200, 200, 205, 0)',
-                  'rgba(200, 200, 205, 0.35)',
-                  'rgba(220, 220, 225, 0.85)',
-                  'rgba(200, 200, 205, 0.35)',
-                  'rgba(200, 200, 205, 0)',
+                  'rgba(192, 132, 252, 0)',
+                  'rgba(192, 132, 252, 0.28)',
+                  'rgba(167, 139, 250, 0.72)',
+                  'rgba(192, 132, 252, 0.28)',
+                  'rgba(192, 132, 252, 0)',
                 ]}
                 locations={[0, 0.22, 0.5, 0.78, 1]}
                 start={{ x: 0, y: 0.5 }}
@@ -555,11 +556,11 @@ export default function Screen15() {
               <View style={styles.headerRightInner}>
                 <LinearGradient
                   colors={[
-                    'rgba(200, 200, 205, 0)',
-                    'rgba(200, 200, 205, 0.35)',
-                    'rgba(220, 220, 225, 0.85)',
-                    'rgba(200, 200, 205, 0.35)',
-                    'rgba(200, 200, 205, 0)',
+                    'rgba(129, 140, 248, 0)',
+                    'rgba(129, 140, 248, 0.28)',
+                    'rgba(99, 102, 241, 0.7)',
+                    'rgba(129, 140, 248, 0.28)',
+                    'rgba(129, 140, 248, 0)',
                   ]}
                   locations={[0, 0.22, 0.5, 0.78, 1]}
                   start={{ x: 0, y: 0.5 }}

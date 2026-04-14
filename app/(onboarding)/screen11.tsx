@@ -121,7 +121,7 @@ export default function Screen11() {
   }, []);
 
   const openModal = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setModalVisible(true);
     Animated.parallel([
       Animated.timing(modalBg, {
@@ -151,7 +151,7 @@ export default function Screen11() {
   };
 
   const handleGetStarted = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     Animated.parallel([
       Animated.timing(modalBg, {
         toValue: 0,

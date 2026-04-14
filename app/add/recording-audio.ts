@@ -589,26 +589,39 @@ export const renderBufferToFileWithEffects = async ({
   );
   const source = renderContext.createBufferSource();
   source.buffer = buffer;
-  let tail: AudioNode = source;
 
-  if (withEcho) {
-    const echo = renderContext.createConvolver();
-    echo.buffer = createEchoImpulse(renderContext);
-    tail.connect(echo);
-    tail = echo;
+  if (!withEcho && !withReverb) {
+    source.connect(renderContext.destination);
+  } else {
+    const dryGain = renderContext.createGain();
+    dryGain.gain.value = 0.85;
+    source.connect(dryGain);
+    dryGain.connect(renderContext.destination);
+
+    if (withEcho) {
+      const echoWet = renderContext.createGain();
+      echoWet.gain.value = 0.25;
+      const echo = renderContext.createConvolver();
+      echo.buffer = createEchoImpulse(renderContext);
+      source.connect(echo);
+      echo.connect(echoWet);
+      echoWet.connect(renderContext.destination);
+    }
+
+    if (withReverb) {
+      const reverbWet = renderContext.createGain();
+      reverbWet.gain.value = 0.22;
+      const reverb = renderContext.createConvolver();
+      reverb.buffer = createReverbImpulse(renderContext);
+      source.connect(reverb);
+      reverb.connect(reverbWet);
+      reverbWet.connect(renderContext.destination);
+    }
   }
 
-  if (withReverb) {
-    const reverb = renderContext.createConvolver();
-    reverb.buffer = createReverbImpulse(renderContext);
-    tail.connect(reverb);
-    tail = reverb;
-  }
-
-  tail.connect(renderContext.destination);
   source.start();
   const rendered = await renderContext.startRendering();
-  const renderedWithGain = withReverb ? applyMakeupGain(renderContext, rendered, reverbGain) : rendered;
+  const renderedWithGain = rendered;
   const wavBytes = encodeBufferAsWav(renderedWithGain);
   const processedDir = new Directory(Paths.cache, 'processed-recordings');
   if (!processedDir.exists) {

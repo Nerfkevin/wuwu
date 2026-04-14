@@ -48,7 +48,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Allow Wu-Wu to access your microphone.",
+          "microphonePermission": "Allow Wu-Wu to access your microphone to record your affirmations.",
           "recordAudioAndroid": true,
           "enableBackgroundPlayback": true
         }
@@ -56,14 +56,25 @@
       [
         "react-native-audio-api",
         {
-          "iosMicrophonePermission": "Allow Wu-Wu to access your microphone.",
+          "iosMicrophonePermission": "Allow Wu-Wu to access your microphone to record your affirmations.",
           "iosBackgroundMode": true,
           "androidForegroundService": true
         }
       ],
       "expo-font",
       "expo-image",
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "enableBackgroundRemoteNotifications": false
+        }
+      ],
       "expo-web-browser",
       "expo-asset",
       "expo-localization"

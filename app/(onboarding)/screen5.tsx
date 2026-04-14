@@ -96,7 +96,7 @@ const slides: Slide[] = [
     storageKey: "onboarding_pillars",
     options: [
       { emoji: "⚡", label: "Self-Worth & Confidence" },
-      { emoji: "🌿", label: "Wealth & Abundance" },
+      { emoji: "💵", label: "Wealth & Abundance" },
       { emoji: "💕", label: "Love & Relationships" },
       { emoji: "💪", label: "Health & Vitality" },
       { emoji: "🌸", label: "Peace & Mental Calm" },
@@ -115,7 +115,15 @@ const slides: Slide[] = [
     type: "single",
     question: "how long do these limiting beliefs usually stick around?",
     storageKey: "onboarding_duration",
-    options: ["Under a minute", "15–30 minutes", "30 minutes to 1 hour", "1–2 hours", "Almost constant"],
+    options: [
+      "Just a moment",
+      "A few minutes",
+      "5–15 minutes",
+      "15–30 minutes",
+      "30–60 minutes",
+      "1–2 hours",
+      "Almost constant",
+    ],
   },
 ];
 
@@ -512,7 +520,7 @@ export default function Screen5() {
 
   const handleContinue = async () => {
     if (!canContinue) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     if (activeIndex === 0) {
       await AsyncStorage.setItem("onboarding_age", ageSelected!);
       listRef.current?.scrollToIndex({ index: 1, animated: true });

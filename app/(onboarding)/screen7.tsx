@@ -108,7 +108,7 @@ const slides: Slide[] = [
     options: [
       "🙏 Silence self-doubt",
       "💰 Unlock effortless wealth",
-      "❤️ Magnetize loving relationships",
+      "❤️ Attract loving relationships",
       "😌 Find calm & peace",
       "🔥 Build unshakable confidence",
       "🧠 Gain crystal-clear focus",
@@ -130,7 +130,7 @@ const slides: Slide[] = [
   {
     id: "3",
     type: "snap",
-    question: "be honest, how often do you spend time on affirmations/manifestations per week?",
+    question: "be honest, how often do you currently spend time on affirmations/manifestations per week?",
     storageKey: "onboarding_affirmation_days",
   },
   {
@@ -188,8 +188,8 @@ function QuestionSlide({
 
   useEffect(() => {
     if (!isActive) {
-      setVisibleCount(0);
-      fadeHint.setValue(0);
+      setVisibleCount(questionTokens.length);
+      fadeHint.setValue(hint ? 1 : 0);
       completedRef.current = false;
       return;
     }
@@ -235,47 +235,45 @@ function QuestionSlide({
 
   return (
     <View style={styles.questionSlide}>
-      {isActive ? (
-        <>
-          <View style={[styles.questionSlot, { minHeight: qLineH * 3 }]}>
-            <View style={styles.charRow}>
-              {questionWords.map((word, wIdx) => {
-                const charsVisible = Math.max(
-                  0,
-                  Math.min(word.chars.length, visibleCount - word.startIdx)
-                );
-                if (charsVisible === 0) return null;
-                if (word.chars.length === 1 && word.chars[0].ch === "\n") {
-                  return <View key={wIdx} style={styles.lineBreak} />;
-                }
-                return (
-                  <View key={wIdx} style={styles.wordRow}>
-                    {word.chars.slice(0, charsVisible).map((tok, cIdx) => (
-                      <FadeLetter
-                        key={`${word.startIdx}-${cIdx}`}
-                        ch={tok.ch}
-                        charStyle={questionCharStyle}
-                      />
-                    ))}
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-          {hint ? (
-            <Animated.Text style={[styles.hint, { opacity: fadeHint }]}>
-              {hint}
-            </Animated.Text>
-          ) : null}
-        </>
-      ) : (
-        <>
-          <View style={[styles.questionSlot, { minHeight: qLineH * 3 }]}>
-            <Text style={styles.questionStatic}>{slide.question}</Text>
-          </View>
-          {hint ? <Text style={styles.hint}>{hint}</Text> : null}
-        </>
-      )}
+      <View style={[styles.questionSlot, { minHeight: qLineH * 3 }]}>
+        <View style={styles.charRow}>
+          {questionWords.map((word, wIdx) => {
+            const charsVisible = Math.max(
+              0,
+              Math.min(word.chars.length, visibleCount - word.startIdx)
+            );
+            if (charsVisible === 0) return null;
+            if (word.chars.length === 1 && word.chars[0].ch === "\n") {
+              return <View key={wIdx} style={styles.lineBreak} />;
+            }
+            return (
+              <View key={wIdx} style={styles.wordRow}>
+                {word.chars.slice(0, charsVisible).map((tok, cIdx) =>
+                  isActive ? (
+                    <FadeLetter
+                      key={`${word.startIdx}-${cIdx}`}
+                      ch={tok.ch}
+                      charStyle={questionCharStyle}
+                    />
+                  ) : (
+                    <Text
+                      key={`${word.startIdx}-${cIdx}`}
+                      style={questionCharStyle}
+                    >
+                      {tok.ch}
+                    </Text>
+                  )
+                )}
+              </View>
+            );
+          })}
+        </View>
+      </View>
+      {hint ? (
+        <Animated.Text style={[styles.hint, { opacity: fadeHint }]}>
+          {hint}
+        </Animated.Text>
+      ) : null}
     </View>
   );
 }
@@ -690,7 +688,7 @@ export default function Screen7() {
 
   const handleContinue = async () => {
     if (!canContinue) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     if (activeIndex === 0) {
       await AsyncStorage.setItem("onboarding_goals", JSON.stringify(goalsSelected));
       listRef.current?.scrollToIndex({ index: 1, animated: true });
@@ -719,7 +717,7 @@ export default function Screen7() {
   };
 
   const handleCardContinue = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setActiveIndex(2);
     Animated.timing(slideAnim, {
       toValue: width,

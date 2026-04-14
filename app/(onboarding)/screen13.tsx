@@ -716,7 +716,7 @@ export default function Screen13() {
 
   const handleContinue = async () => {
     if (!canContinue) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     if (activeIndex === 0) {
       await AsyncStorage.setItem(
         "onboarding_pillars_selected",

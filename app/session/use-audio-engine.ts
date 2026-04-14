@@ -143,23 +143,7 @@ export function useAudioEngine({
     masterGain.gain.value = 1;
     masterGainRef.current = masterGain;
 
-    // Soft limiter: tanh WaveShaper curve — falls back to direct connect if unsupported
-    try {
-      const CURVE_SIZE = 4096;
-      const curve = new Float32Array(CURVE_SIZE);
-      const k = 4;
-      for (let i = 0; i < CURVE_SIZE; i++) {
-        const x = (i * 2) / (CURVE_SIZE - 1) - 1;
-        curve[i] = (Math.tanh(k * x) / Math.tanh(k)) * 1.05;
-      }
-      const softLimiter = ctx.createWaveShaper();
-      softLimiter.curve = curve;
-      softLimiter.oversample = '4x';
-      masterGain.connect(softLimiter);
-      softLimiter.connect(ctx.destination);
-    } catch {
-      masterGain.connect(ctx.destination);
-    }
+    masterGain.connect(ctx.destination);
 
     const affirmationGain = ctx.createGain();
     affirmationGain.gain.value = affirmationVolumeRef.current;

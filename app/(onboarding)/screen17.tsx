@@ -173,7 +173,7 @@ export default function Screen17() {
 
   const handleContinue = async () => {
     try {
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       navigateTo("/(onboarding)/screen18");
     } catch (error) {
       console.error("[Screen17] Error in handleContinue:", error);

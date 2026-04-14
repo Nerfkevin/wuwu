@@ -19,7 +19,11 @@ import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
 import { usePostHogScreenViewed } from "@/lib/posthog";
 import { createAudioPlayer } from "@/lib/expo-audio";
-import { formatHoursPlayed } from "@/lib/profile-stats";
+import {
+  commitOnboardingFirstSessionToProfile,
+  formatPlayTime,
+  getProfileStats,
+} from "@/lib/profile-stats";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -67,7 +71,8 @@ export default function Screen16() {
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
 
   const [userName, setUserName] = useState("");
-  const [displayHours, setDisplayHours] = useState("0.0");
+  const [displayHours, setDisplayHours] = useState("0:00");
+  const [displayTimeLabel, setDisplayTimeLabel] = useState("Minutes Played");
   const [displaySessions, setDisplaySessions] = useState("0");
 
   const lottieRef = useRef<LottieView>(null);
@@ -155,7 +160,9 @@ export default function Screen16() {
       // ── Phase 2: stats block ────────────────────────────────────────────────
       const sessionMsRaw = await AsyncStorage.getItem("onboarding_session_ms");
       const sessionMs = Math.max(0, Number(sessionMsRaw ?? 0));
-      const targetHours = parseFloat(formatHoursPlayed(sessionMs));
+      await commitOnboardingFirstSessionToProfile(sessionMs);
+      const { totalPlayMs, sessionCount } = await getProfileStats();
+      const targetSessions = sessionCount;
 
       const FADE_IN_MS = 900;
       await new Promise<void>((res) =>
@@ -209,8 +216,10 @@ export default function Screen16() {
           const elapsed = now - startTime;
           const rawProgress = Math.min(elapsed / COUNT_DURATION, 1);
           const t = 1 - Math.pow(1 - rawProgress, 3);
-          setDisplayHours((targetHours * t).toFixed(1));
-          setDisplaySessions(String(Math.round(t)));
+          const fmt = formatPlayTime(totalPlayMs * t);
+          setDisplayHours(fmt.value);
+          setDisplayTimeLabel(fmt.label);
+          setDisplaySessions(String(Math.round(t * targetSessions)));
           if (now - lastHaptic > HAPTIC_INTERVAL_MS) {
             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             lastHaptic = now;
@@ -281,7 +290,7 @@ export default function Screen16() {
   }, []);
 
   const handleContinue = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     navigateTo("/(onboarding)/screen17");
   };
 
@@ -325,7 +334,7 @@ export default function Screen16() {
               <View style={styles.statRow}>
                 <View style={styles.statItem}>
                   <Text style={styles.statNumber}>{displayHours}</Text>
-                  <Text style={styles.statLabel}>Hours Played</Text>
+                  <Text style={styles.statLabel}>{displayTimeLabel}</Text>
                 </View>
                 <View style={styles.statDivider} />
                 <View style={styles.statItem}>
