@@ -11,7 +11,7 @@ import {
   NativeScrollEvent,
 } from "react-native";
 import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
-import Slider from "@react-native-community/slider";
+import GradientSnapSlider from "@/components/gradient-snap-slider";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -116,7 +116,6 @@ const slides: Slide[] = [
     question: "how long do these limiting beliefs usually stick around?",
     storageKey: "onboarding_duration",
     options: [
-      "Just a moment",
       "A few minutes",
       "5–15 minutes",
       "15–30 minutes",
@@ -391,16 +390,13 @@ function SnapOptions({
       style={[snapStyles.panel, { opacity: fadeOpts }]}
     >
       <Text style={snapStyles.valueLabel} numberOfLines={1} adjustsFontSizeToFit>{slide.options[selectedIdx]}</Text>
-      <Slider
+      <GradientSnapSlider
         style={snapStyles.slider}
         minimumValue={0}
         maximumValue={slide.options.length - 1}
         step={1}
         value={selectedIdx}
         onValueChange={handleValueChange}
-        minimumTrackTintColor="#E53935"
-        maximumTrackTintColor="rgba(255,255,255,0.2)"
-        thumbTintColor="#E53935"
       />
     </Animated.View>
   );

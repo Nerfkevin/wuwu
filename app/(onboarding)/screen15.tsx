@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, View, Pressable } from 'react-native';
+import { StyleSheet, Text, View, Pressable, Dimensions } from 'react-native';
+
+const { width: screenWidth } = Dimensions.get('window');
+const isSmallDevice = screenWidth < 380;
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import Animated, {
@@ -623,11 +626,11 @@ export default function Screen15() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  safeArea: { flex: 1, paddingHorizontal: 24 },
+  safeArea: { flex: 1, paddingHorizontal: isSmallDevice ? 18 : 24 },
   brandTitleWrap: { alignItems: 'center', marginTop: 2, marginBottom: 2 },
   brandTitle: {
     fontFamily: Fonts.serif,
-    fontSize: 26,
+    fontSize: isSmallDevice ? 22 : 26,
     color: Colors.text,
     letterSpacing: 0.5,
   },
@@ -678,10 +681,10 @@ const styles = StyleSheet.create({
   },
   affirmationText: {
     fontFamily: Fonts.serif,
-    fontSize: 24,
+    fontSize: isSmallDevice ? 20 : 24,
     color: Colors.text,
     textAlign: 'center',
-    lineHeight: 32,
+    lineHeight: isSmallDevice ? 27 : 32,
   },
   footer: {
     alignItems: 'center',
@@ -693,16 +696,16 @@ const styles = StyleSheet.create({
   },
   affirmingLabel: {
     fontFamily: Fonts.mono,
-    fontSize: 20,
+    fontSize: isSmallDevice ? 15 : 20,
     color: Colors.text,
     letterSpacing: 1.5,
-    marginLeft: 20,
+    marginLeft: isSmallDevice ? 12 : 20,
   },
   affirmingDots: {
     fontFamily: Fonts.mono,
-    fontSize: 20,
+    fontSize: isSmallDevice ? 15 : 20,
     color: Colors.text,
     letterSpacing: 1,
-    width: 46,
+    width: isSmallDevice ? 36 : 46,
   },
 });

@@ -34,6 +34,10 @@ const BG_POINTS: [number, number][] = [
 
 const DAY_LABELS = ['su', 'mo', 'tu', 'we', 'th', 'fr', 'sa'];
 
+function dateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function getWeekDates() {
   const today = new Date();
   const dayOfWeek = today.getDay();
@@ -42,6 +46,37 @@ function getWeekDates() {
     d.setDate(today.getDate() - dayOfWeek + i);
     return d.getDate();
   });
+}
+
+function getStreakDayIndicesThisWeek(streak: number, lastDateStr: string | null): Set<number> {
+  if (!lastDateStr || streak === 0) return new Set();
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const todayStr = dateKey(today);
+  const yesterdayStr = dateKey(yesterday);
+
+  // Streak is broken if last session was before yesterday
+  if (lastDateStr !== todayStr && lastDateStr !== yesterdayStr) return new Set();
+
+  const weekStart = new Date(today);
+  weekStart.setDate(today.getDate() - today.getDay());
+
+  const [y, m, day] = lastDateStr.split('-').map(Number);
+  const lastDate = new Date(y, m - 1, day);
+  lastDate.setHours(0, 0, 0, 0);
+
+  const active = new Set<number>();
+  for (let i = 0; i < streak; i++) {
+    const d = new Date(lastDate);
+    d.setDate(lastDate.getDate() - i);
+    if (d >= weekStart && d <= today) {
+      active.add(d.getDay());
+    }
+  }
+  return active;
 }
 
 function getMotivation(streak: number) {
@@ -63,6 +98,7 @@ export default function StreakScreen() {
   const lottieRef = useRef<LottieView>(null);
   const [streak, setStreak] = useState(0);
   const [signaturePaths, setSignaturePaths] = useState<string[]>([]);
+  const [streakDayIndices, setStreakDayIndices] = useState<Set<number>>(new Set());
   const today = new Date().getDay();
   const weekDates = getWeekDates();
 
@@ -79,8 +115,19 @@ export default function StreakScreen() {
   const calOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    SecureStore.getItemAsync('streak_count').then((val) => {
-      if (val) setStreak(parseInt(val, 10));
+    Promise.all([
+      SecureStore.getItemAsync('streak_count'),
+      SecureStore.getItemAsync('streak_last_date'),
+    ]).then(([countRaw, lastDateStr]) => {
+      const count = countRaw ? parseInt(countRaw, 10) : 0;
+      const t = new Date();
+      t.setHours(0, 0, 0, 0);
+      const yest = new Date(t);
+      yest.setDate(t.getDate() - 1);
+      const isAlive = lastDateStr === dateKey(t) || lastDateStr === dateKey(yest);
+      const live = isAlive ? count : 0;
+      setStreak(live);
+      setStreakDayIndices(getStreakDayIndicesThisWeek(live, lastDateStr));
     });
     SecureStore.getItemAsync('signature_paths').then((val) => {
       if (val) setSignaturePaths(JSON.parse(val));
@@ -192,16 +239,20 @@ export default function StreakScreen() {
                 { transform: [{ translateY: calSlide }], opacity: calOpacity },
               ]}
             >
-              {DAY_LABELS.map((day, i) => (
-                <View key={day} style={styles.dayCol}>
-                  <Text style={styles.dayLabel}>{day}</Text>
-                  <View style={[styles.dayCircle, i === today && styles.dayCircleActive]}>
-                    <Text style={[styles.dayNum, i === today && styles.dayNumActive]}>
-                      {weekDates[i]}
-                    </Text>
+              {DAY_LABELS.map((day, i) => {
+                const isStreakDay = streakDayIndices.has(i);
+                const isToday = i === today;
+                return (
+                  <View key={day} style={styles.dayCol}>
+                    <Text style={[styles.dayLabel, isToday && styles.dayLabelToday]}>{day}</Text>
+                    <View style={[styles.dayCircle, isStreakDay && styles.dayCircleActive]}>
+                      <Text style={[styles.dayNum, isStreakDay && styles.dayNumActive]}>
+                        {weekDates[i]}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </Animated.View>
 
             {/* signature */}
@@ -291,6 +342,10 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.4)',
     fontFamily: Fonts.mono,
     letterSpacing: 0.3,
+  },
+  dayLabelToday: {
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '700',
   },
   dayCircle: {
     width: 32,

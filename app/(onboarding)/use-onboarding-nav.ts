@@ -42,3 +42,5 @@ export function useOnboardingNav() {
 
   return { contentOpacity, fadeIn, navigateTo, replaceTo };
 }
+
+export default {};

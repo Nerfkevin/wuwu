@@ -86,3 +86,5 @@ export const withAlpha = (hexColor: string, alpha: number) => {
   const b = Number.parseInt(value.slice(4, 6), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
+
+export default {};

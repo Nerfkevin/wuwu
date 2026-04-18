@@ -6,12 +6,17 @@ import {
   Modal,
   Platform,
   Pressable,
+  Dimensions,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+
+const { width: screenWidth } = Dimensions.get('window');
+const isSmallDevice = screenWidth < 380;
+
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -396,7 +401,7 @@ export default function LibraryRecordingScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: {
-    paddingTop: 58,
+    paddingTop: isSmallDevice ? 44 : 58,
     paddingHorizontal: 16,
   },
   backButton: {
@@ -419,8 +424,8 @@ const styles = StyleSheet.create({
   },
   affirmationText: {
     fontFamily: Fonts.serif,
-    fontSize: 24,
-    lineHeight: 32,
+    fontSize: isSmallDevice ? 20 : 24,
+    lineHeight: isSmallDevice ? 27 : 32,
     textAlign: 'center',
     color: Colors.text,
   },

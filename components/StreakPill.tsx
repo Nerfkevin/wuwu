@@ -10,8 +10,20 @@ export default function StreakPill() {
   const [streak, setStreak] = useState(0);
 
   useEffect(() => {
-    SecureStore.getItemAsync('streak_count').then((val) => {
-      if (val) setStreak(parseInt(val, 10));
+    Promise.all([
+      SecureStore.getItemAsync('streak_count'),
+      SecureStore.getItemAsync('streak_last_date'),
+    ]).then(([countRaw, lastDateStr]) => {
+      const count = countRaw ? parseInt(countRaw, 10) : 0;
+      if (!lastDateStr) return;
+      const t = new Date();
+      t.setHours(0, 0, 0, 0);
+      const yest = new Date(t);
+      yest.setDate(t.getDate() - 1);
+      const fmt = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const isAlive = lastDateStr === fmt(t) || lastDateStr === fmt(yest);
+      setStreak(isAlive ? count : 0);
     });
   }, []);
 

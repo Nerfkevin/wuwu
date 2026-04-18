@@ -1,6 +1,9 @@
 
 import React, { useState, useRef } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, FlatList, Pressable, Animated } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, FlatList, Pressable, Animated, Dimensions } from 'react-native';
+
+const { width: screenWidth } = Dimensions.get('window');
+const isSmallDevice = screenWidth < 380;
 import * as Haptics from 'expo-haptics';
 import { Stack, useRouter } from 'expo-router';
 import { MeshGradientView } from 'expo-mesh-gradient';
@@ -243,7 +246,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 60,
+    paddingTop: isSmallDevice ? 44 : 60,
     paddingBottom: 10,
   },
   backButton: {
@@ -270,10 +273,10 @@ const styles = StyleSheet.create({
   },
   mainTitle: {
     fontFamily: Fonts.serif,
-    fontSize: 40,
+    fontSize: isSmallDevice ? 32 : 40,
     color: Colors.text,
     marginBottom: 8,
-    lineHeight: 50,
+    lineHeight: isSmallDevice ? 40 : 50,
   },
   titleIcon: {
     marginLeft: 12,
@@ -307,7 +310,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    minHeight: 120,
+    minHeight: isSmallDevice ? 100 : 120,
     backgroundColor: 'transparent',
     borderRadius: 20,
     borderWidth: 1,

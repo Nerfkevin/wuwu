@@ -220,7 +220,7 @@ export default function Screen21() {
             accessibilityLabel="Restart onboarding"
           >
             <Text style={styles.title}>
-              Wu-Wu was designed for{"\n"}people like you ❤️
+              Wu-Wu was designed for{"\n"}dreamers like you ❤️
             </Text>
           </TouchableOpacity>
           <Text style={styles.subtitle}>reviews from people using Wu-Wu.</Text>

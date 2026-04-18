@@ -16,12 +16,38 @@ import { Colors, Fonts } from '@/constants/theme';
 import { NativeModules } from 'react-native';
 import { configureMixedPlaybackAsync } from '@/lib/audio-playback';
 import Superwall from '@superwall/react-native-superwall';
-import { AppPostHogProvider } from '@/lib/posthog-provider';
+import { AppPostHogProvider, usePostHog } from '@/lib/posthog-provider';
+import * as SecureStore from 'expo-secure-store';
 
 const SUPERWALL_API_KEY_IOS = 'pk_5L3AcVB9DaMbr9E9M79vc';
+const USER_UUID_KEY = 'app_user_uuid';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
+
+function UserIdentityManager() {
+  const posthog = usePostHog();
+
+  useEffect(() => {
+    const identify = async () => {
+      try {
+        let uuid = await SecureStore.getItemAsync(USER_UUID_KEY);
+        if (!uuid) {
+          uuid = crypto.randomUUID();
+          await SecureStore.setItemAsync(USER_UUID_KEY, uuid);
+        }
+        await Superwall.shared.identify({ userId: uuid });
+        posthog?.identify(uuid);
+      } catch (e) {
+        console.log('[UserIdentityManager] error:', e);
+      }
+    };
+
+    identify();
+  }, [posthog]);
+
+  return null;
+}
 
 export default function RootLayout() {
   const [loaded] = useFonts({
@@ -29,12 +55,6 @@ export default function RootLayout() {
     InstrumentSerif_400Regular_Italic,
     SpaceMono_400Regular,
   });
-
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded]);
 
   useEffect(() => {
     NativeModules.AudioAPIModule?.disableSessionManagement?.();
@@ -62,6 +82,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AppPostHogProvider>
+      <UserIdentityManager />
       <ThemeProvider value={theme}>
         <Stack
           screenOptions={{

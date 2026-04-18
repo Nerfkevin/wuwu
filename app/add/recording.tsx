@@ -12,7 +12,11 @@ import {
   Platform,
   Modal,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
+
+const { width: screenWidth } = Dimensions.get('window');
+const isSmallDevice = screenWidth < 380;
 
 function ScaleBtn({
   onPress,
@@ -87,7 +91,7 @@ import {
   configureBackgroundPlaybackAsync,
   configureMixedPlaybackAsync,
 } from '@/lib/audio-playback';
-import { usePostHogScreenViewed } from '@/lib/posthog';
+import { usePostHog, usePostHogScreenViewed } from '@/lib/posthog';
 
 const recordColor = '#FF0000';
 const TRIM_MIN_GAP_SECONDS = 0.35;
@@ -106,6 +110,7 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
     screen: reviewMode ? 'add/review' : 'add/recording',
     component: reviewMode ? 'ReviewScreen' : 'RecordingScreen',
   });
+  const ph = usePostHog();
   const router = useRouter();
   const params = useLocalSearchParams<{ text?: string; pillar?: string; writeOwn?: string; onboarding?: string }>();
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -813,6 +818,16 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
       text: message,
       pillar: pillarKey,
     });
+    try {
+      ph?.capture('recording_saved', {
+        pillar: pillarKey,
+        has_enhance: effects.enhance,
+        has_echo: effects.echo,
+        has_reverb: effects.reverb,
+        has_trim: hasTrimSelection,
+        onboarding: params.onboarding === '1',
+      });
+    } catch {}
     if (params.onboarding === '1') {
       router.back();
     } else {
@@ -1097,19 +1112,19 @@ const styles = StyleSheet.create({
   },
   affirmationText: {
     fontFamily: Fonts.serif,
-    fontSize: 22,
+    fontSize: isSmallDevice ? 18 : 22,
     color: Colors.text,
     textAlign: 'center',
-    lineHeight: 30,
+    lineHeight: isSmallDevice ? 25 : 30,
   },
   messageInput: {
     width: '100%',
     maxHeight: '100%',
     fontFamily: Fonts.serif,
-    fontSize: 28,
+    fontSize: isSmallDevice ? 22 : 28,
     color: Colors.text,
     textAlign: 'center',
-    lineHeight: 36,
+    lineHeight: isSmallDevice ? 30 : 36,
   },
   controlsShell: {
     width: '100%',
@@ -1143,7 +1158,7 @@ const styles = StyleSheet.create({
   },
   doneText: {
     fontFamily: Fonts.mono,
-    fontSize: 18,
+    fontSize: isSmallDevice ? 15 : 18,
     color: '#000000',
   },
   recordingLayer: {
@@ -1175,9 +1190,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   recordButton: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: isSmallDevice ? 60 : 72,
+    height: isSmallDevice ? 60 : 72,
+    borderRadius: isSmallDevice ? 30 : 36,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: recordColor,

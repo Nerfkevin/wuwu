@@ -1,6 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import * as Haptics from 'expo-haptics';
-import { StyleSheet, Text, View, FlatList, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, View, FlatList, TouchableOpacity, Dimensions } from 'react-native';
+
+const { width: screenWidth } = Dimensions.get('window');
+const isSmallDevice = screenWidth < 380;
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { MeshGradientView } from 'expo-mesh-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -136,7 +139,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 60,
+    paddingTop: isSmallDevice ? 44 : 60,
     paddingBottom: 10,
   },
   backButton: {
@@ -155,9 +158,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   pillarIconWrap: {
-    width: 96,
-    height: 96,
-    borderRadius: 24,
+    width: isSmallDevice ? 72 : 96,
+    height: isSmallDevice ? 72 : 96,
+    borderRadius: isSmallDevice ? 18 : 24,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
@@ -175,12 +178,12 @@ const styles = StyleSheet.create({
   },
   pillarTitle: {
     fontFamily: Fonts.mono,
-    fontSize: 18,
+    fontSize: isSmallDevice ? 15 : 18,
     color: Colors.text,
   },
   heroSubtitle: {
     fontFamily: Fonts.mono,
-    fontSize: 14,
+    fontSize: isSmallDevice ? 12 : 14,
     color: Colors.textSecondary,
     marginTop: 6,
   },

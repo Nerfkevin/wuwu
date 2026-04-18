@@ -11,7 +11,11 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   Animated,
+  Dimensions,
 } from 'react-native';
+
+const { width: screenWidth } = Dimensions.get('window');
+const isSmallDevice = screenWidth < 380;
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
@@ -131,12 +135,12 @@ const styles = StyleSheet.create({
   },
   header: {
     width: '100%',
-    paddingTop: 62,
+    paddingTop: isSmallDevice ? 46 : 62,
     paddingBottom: 18,
   },
   headerTitle: {
     fontFamily: Fonts.mono,
-    fontSize: 22,
+    fontSize: isSmallDevice ? 18 : 22,
     color: Colors.text,
     textAlign: 'center',
   },
@@ -147,10 +151,10 @@ const styles = StyleSheet.create({
     width: '100%',
     maxHeight: '100%',
     fontFamily: Fonts.serif,
-    fontSize: 28,
+    fontSize: isSmallDevice ? 22 : 28,
     color: Colors.text,
     textAlign: 'center',
-    lineHeight: 36,
+    lineHeight: isSmallDevice ? 30 : 36,
   },
   recordButtonWrap: {
     width: '100%',

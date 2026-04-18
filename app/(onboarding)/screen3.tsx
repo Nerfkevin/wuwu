@@ -18,7 +18,7 @@ import * as Haptics from "expo-haptics";
 import * as SecureStore from "expo-secure-store";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
-import { usePostHogScreenViewed } from "@/lib/posthog";
+import { usePostHog, usePostHogScreenViewed } from "@/lib/posthog";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -70,6 +70,7 @@ export default function Screen3() {
     component: "Screen3",
     screen_number: 3,
   });
+  const ph = usePostHog();
   const { contentOpacity, fadeIn, navigateTo } = useOnboardingNav();
   const [name, setName] = useState("");
   const inputRef = useRef<TextInput>(null);
@@ -158,6 +159,12 @@ export default function Screen3() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     Keyboard.dismiss();
     await SecureStore.setItemAsync("user_name", name.trim());
+    try {
+      const uuid = await SecureStore.getItemAsync('app_user_uuid');
+      if (uuid) ph?.identify(uuid, { name: name.trim() });
+      ph?.capture('onboarding_name_set', { component: 'Screen3' });
+      void ph?.flush();
+    } catch {}
     navigateTo("/(onboarding)/screen4");
   };
 

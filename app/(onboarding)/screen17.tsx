@@ -122,20 +122,23 @@ export default function Screen17() {
 
     const requestPermissions = async () => {
       try {
-        const { status } = await Notifications.requestPermissionsAsync({
+        const result = await Notifications.requestPermissionsAsync({
           ios: {
             allowAlert: true,
             allowBadge: true,
             allowSound: true,
           },
         });
+        const isGranted =
+          result.ios?.status === Notifications.IosAuthorizationStatus.AUTHORIZED ||
+          result.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
 
         await AsyncStorage.setItem(
           "notificationsEnabled",
-          status === "granted" ? "true" : "false"
+          isGranted ? "true" : "false"
         );
 
-        if (status === "granted") {
+        if (isGranted) {
           await scheduleAffirmationReminder();
         }
 

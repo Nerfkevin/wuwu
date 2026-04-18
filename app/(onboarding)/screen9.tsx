@@ -288,7 +288,7 @@ export default function Screen9() {
 
             {/* Stat */}
             <Animated.Text style={[styles.stat, { opacity: fadeStat }]}>
-              23% more rumination time compared{"\n"}to others in your demographic
+              *23% more rumination time compared{"\n"}to others in your demographic
             </Animated.Text>
           </Animated.View>
         </View>

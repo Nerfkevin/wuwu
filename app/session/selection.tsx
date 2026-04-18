@@ -23,9 +23,10 @@ import { GlowPresets } from '@/constants/glow';
 import { getPlaylists, Playlist, ALL_PLAYLIST_ID } from '@/lib/playlist-store';
 import { getLastPlaylistId, setLastPlaylistId } from '@/lib/session-prefs';
 import { useFrequencyPreview } from '@/lib/use-frequency-preview';
-import { usePostHogScreenViewed } from '@/lib/posthog';
+import { usePostHog, usePostHogScreenViewed } from '@/lib/posthog';
 
 const { width } = Dimensions.get('window');
+const isSmallDevice = width < 380;
 const ITEM_SIZE = (width - 40 - 24) / 3; // (screen width - padding - gaps) / 3
 const ITEM_RADIUS = 24; // Rounded square radius
 // Fixed height: 3 rows × ITEM_SIZE + 2 gaps — keeps layout stable for both Brainwaves (2 rows) and Solfeggio (3 rows)
@@ -153,6 +154,7 @@ export default function SelectionScreen() {
     component: "SelectionScreen",
   });
 
+  const ph = usePostHog();
   const router = useRouter();
   const [selectedBowlFreq, setSelectedBowlFreq] = useState('528');
   const [selectedPureFreq, setSelectedPureFreq] = useState('528');
@@ -191,6 +193,14 @@ export default function SelectionScreen() {
     stopPreview();
     const pls = await getPlaylists();
     if (pls.length === 0) {
+      try {
+        ph?.capture('session_started', {
+          background: selectedBg,
+          frequency: selectedBg !== 'Brainwaves' ? (activeFreq ?? null) : null,
+          brainwave: selectedBg === 'Brainwaves' ? (selectedBrainwave ?? null) : null,
+          playlist_id: ALL_PLAYLIST_ID,
+        });
+      } catch {}
       navigateToPlayback(ALL_PLAYLIST_ID);
       return;
     }
@@ -207,6 +217,14 @@ export default function SelectionScreen() {
   const handleStartWithPlaylist = async () => {
     await setLastPlaylistId(chosenPlaylistId);
     setShowPlaylistModal(false);
+    try {
+      ph?.capture('session_started', {
+        background: selectedBg,
+        frequency: selectedBg !== 'Brainwaves' ? (activeFreq ?? null) : null,
+        brainwave: selectedBg === 'Brainwaves' ? (selectedBrainwave ?? null) : null,
+        playlist_id: chosenPlaylistId,
+      });
+    } catch {}
     navigateToPlayback(chosenPlaylistId);
   };
 
@@ -415,7 +433,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 60,
+    paddingTop: isSmallDevice ? 44 : 60,
     paddingBottom: 10,
   },
   backButton: {
@@ -451,10 +469,10 @@ const styles = StyleSheet.create({
   },
   mainTitle: {
     fontFamily: Fonts.serif,
-    fontSize: 40,
+    fontSize: isSmallDevice ? 32 : 40,
     color: Colors.text,
     marginBottom: 8,
-    lineHeight: 50,
+    lineHeight: isSmallDevice ? 40 : 50,
   },
   freqList: {
     flexGrow: 0,
@@ -475,7 +493,7 @@ const styles = StyleSheet.create({
   },
   freqHz: {
     fontFamily: Fonts.serifBold,
-    fontSize: 24,
+    fontSize: isSmallDevice ? 18 : 24,
     color: Colors.text,
     marginBottom: 2,
     textAlign: 'center',

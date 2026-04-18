@@ -12,7 +12,7 @@ import {
   NativeScrollEvent,
 } from "react-native";
 import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
-import Slider from "@react-native-community/slider";
+import GradientSnapSlider from "@/components/gradient-snap-slider";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MeshGradientView } from "expo-mesh-gradient";
 import * as Haptics from "expo-haptics";
@@ -153,12 +153,12 @@ const slides: Slide[] = [
     maxSelect: 3,
     storageKey: "onboarding_blocks",
     options: [
-      "🧡 past trauma/inner child scars",
-      "😩 lack of motivation",
-      "❓ not knowing what to affirm",
-      "🧠 financial anxiety/scarcity",
-      "😰 fear of judgment",
-      "👥 body image/self love",
+      "😅 I lose momentum or forget",
+      "🤔 I don't know where to start",
+      "🔍 I haven't found what works yet",
+      "😵 I get overwhelmed and stop",
+      "🌞 I'm just not motivated",
+      "⏳ I don't see instant results",
     ],
   },
 ];
@@ -444,16 +444,13 @@ function DaySnapOptions({
       <Text style={snapStyles.valueLabel}>{label}</Text>
       <View style={snapStyles.sliderRow}>
         <Text style={snapStyles.rangeLabel}>1</Text>
-        <Slider
+        <GradientSnapSlider
           style={snapStyles.slider}
           minimumValue={1}
           maximumValue={7}
           step={1}
           value={value}
           onValueChange={handleValueChange}
-          minimumTrackTintColor="#FF3B30"
-          maximumTrackTintColor="rgba(255,255,255,0.2)"
-          thumbTintColor="#FF3B30"
         />
         <Text style={snapStyles.rangeLabel}>7</Text>
       </View>

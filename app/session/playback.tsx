@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, View, Pressable } from 'react-native';
+import { StyleSheet, Text, View, Pressable, Dimensions } from 'react-native';
+
+const { width: screenWidth } = Dimensions.get('window');
+const isSmallDevice = screenWidth < 380;
 import { LinearGradient } from 'expo-linear-gradient';
 import Background from 'react-native-ambient-background';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -36,7 +39,7 @@ import {
   BRAINWAVE_LABELS,
   withAlpha,
 } from './playback-constants';
-import { usePostHogScreenViewed } from '@/lib/posthog';
+import { usePostHog, usePostHogScreenViewed } from '@/lib/posthog';
 
 const triggerHaptic = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 const triggerFinishHaptic = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -47,6 +50,7 @@ export default function PlaybackScreen() {
     component: "PlaybackScreen",
   });
 
+  const ph = usePostHog();
   const router = useRouter();
   const navigation = useNavigation();
   const statsRecordedRef = useRef(false);
@@ -256,6 +260,15 @@ export default function PlaybackScreen() {
     const ms = stopSession();
     statsRecordedRef.current = true;
     if (ms > 0) await recordPlaybackSession(ms);
+    try {
+      ph?.capture('session_finished', {
+        session_ms: Math.max(0, ms),
+        background: selectedBackground,
+        frequency: !shouldPlayBrainwave ? (selectedFrequency ?? null) : null,
+        brainwave: shouldPlayBrainwave ? (selectedBrainwave ?? null) : null,
+      });
+      void ph?.flush();
+    } catch {}
     router.replace({
       pathname: '/session/complete',
       params: {
@@ -515,7 +528,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-end',
   },
-  contentContainer: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 72 },
+  contentContainer: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', paddingBottom: isSmallDevice ? 52 : 72 },
   setLabel: { fontFamily: Fonts.mono, fontSize: 14, color: Colors.textSecondary, marginBottom: 12 },
   cardGlowWrapper: { marginVertical: 14 },
   cardContainer: {
@@ -527,16 +540,16 @@ const styles = StyleSheet.create({
   },
   affirmationText: {
     fontFamily: Fonts.serif,
-    fontSize: 24,
+    fontSize: isSmallDevice ? 20 : 24,
     color: Colors.text,
     textAlign: 'center',
-    lineHeight: 32,
+    lineHeight: isSmallDevice ? 27 : 32,
   },
-  controlsContainer: { alignItems: 'center', marginTop: 28, gap: 12 },
+  controlsContainer: { alignItems: 'center', marginTop: isSmallDevice ? 18 : 28, gap: 12 },
   playButton: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: isSmallDevice ? 60 : 72,
+    height: isSmallDevice ? 60 : 72,
+    borderRadius: isSmallDevice ? 30 : 36,
     backgroundColor: Colors.chakra.orange,
     justifyContent: 'center',
     alignItems: 'center',

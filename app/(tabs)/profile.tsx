@@ -9,7 +9,11 @@ import {
   Pressable,
   Linking,
   Platform,
+  Dimensions,
 } from 'react-native';
+
+const { width: screenWidth } = Dimensions.get('window');
+const isSmallDevice = screenWidth < 380;
 import { RecordingMicModal } from '@/components/RecordingMicModal';
 import { getRecordingMicPref } from '@/lib/recording-mic-preference';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -24,7 +28,7 @@ import {
 } from 'expo-web-browser';
 import { Colors, Fonts, Layout } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
-import { usePostHogScreenViewed } from '@/lib/posthog';
+import { usePostHog, usePostHogScreenViewed } from '@/lib/posthog';
 
 const TERMS_URL = 'https://98goats.com/wuwu/terms';
 const PRIVACY_URL = 'https://98goats.com/wuwu/privacy';
@@ -67,6 +71,7 @@ export default function ProfileScreen() {
     component: "ProfileScreen",
   });
 
+  const ph = usePostHog();
   const [userName, setUserName] = useState<string | null>(null);
   const [playTimeValue, setPlayTimeValue] = useState('0:00');
   const [playTimeLabel, setPlayTimeLabel] = useState('Minutes Played');
@@ -192,7 +197,10 @@ export default function ProfileScreen() {
         <View style={styles.divider} />
         <Pressable
           style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-          onPress={() => void openLeaveReview()}
+          onPress={() => {
+            try { ph?.capture('review_requested', { component: 'ProfileScreen' }); } catch {}
+            void openLeaveReview();
+          }}
         >
           <Text style={styles.rowTextFull}>Leave a review</Text>
           <Ionicons name="star-outline" size={20} color={Colors.textSecondary} />
@@ -223,8 +231,8 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    paddingTop: 80,
-    paddingBottom: 40,
+    paddingTop: isSmallDevice ? 60 : 80,
+    paddingBottom: isSmallDevice ? 28 : 40,
   },
   avatarContainer: {
     width: 80,
@@ -244,7 +252,7 @@ const styles = StyleSheet.create({
   },
   username: {
     fontFamily: Fonts.serif,
-    fontSize: 24,
+    fontSize: isSmallDevice ? 20 : 24,
     color: Colors.text,
   },
   statsContainer: {
@@ -274,7 +282,7 @@ const styles = StyleSheet.create({
   },
   statNumber: {
     fontFamily: Fonts.serifBold,
-    fontSize: 32,
+    fontSize: isSmallDevice ? 26 : 32,
     color: Colors.text,
   },
   statLabel: {

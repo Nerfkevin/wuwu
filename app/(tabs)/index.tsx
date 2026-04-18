@@ -10,9 +10,10 @@ import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
 import { Colors, Fonts } from '@/constants/theme';
 import { GlowPresets } from '@/constants/glow';
 import StreakPill from '@/components/StreakPill';
-import { usePostHogScreenViewed } from '@/lib/posthog';
+import { usePostHog, usePostHogScreenViewed } from '@/lib/posthog';
 
 const { width } = Dimensions.get('window');
+const isSmallDevice = width < 380;
 const BUTTON_SIZE = width * 0.55;
 
 function ordinal(n: number) {
@@ -36,6 +37,7 @@ export default function HomeScreen() {
     component: "HomeScreen",
   });
 
+  const ph = usePostHog();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const todayLabel = formatDate(new Date());
@@ -135,6 +137,9 @@ export default function HomeScreen() {
 
     if (!activated) {
       setActivated(true);
+      try {
+        ph?.capture('orb_tapped', { component: 'HomeScreen' });
+      } catch {}
       router.push('/session/selection');
     }
   };
@@ -225,7 +230,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
-    paddingTop: 62,
+    paddingTop: isSmallDevice ? 48 : 62,
     gap: 10,
     zIndex: 1,
   },
@@ -237,7 +242,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: Fonts.serif,
-    fontSize: 64,
+    fontSize: isSmallDevice ? 48 : 64,
     color: Colors.text,
     letterSpacing: 4,
   },

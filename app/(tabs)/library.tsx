@@ -10,7 +10,11 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Dimensions,
 } from 'react-native';
+
+const { width: screenWidth } = Dimensions.get('window');
+const isSmallDevice = screenWidth < 380;
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
@@ -38,7 +42,7 @@ import {
   getPlaylists,
   reorderPlaylistRecordings,
 } from '@/lib/playlist-store';
-import { usePostHogScreenViewed } from '@/lib/posthog';
+import { usePostHog, usePostHogScreenViewed } from '@/lib/posthog';
 
 const springPressIn = { toValue: 0.92 as const, useNativeDriver: true as const, speed: 60, bounciness: 0 };
 const springPressOut = { toValue: 1 as const, useNativeDriver: true as const, speed: 40, bounciness: 6 };
@@ -132,6 +136,7 @@ export default function LibraryScreen() {
     component: "LibraryScreen",
   });
 
+  const ph = usePostHog();
   const router = useRouter();
   const { bottom: bottomInset } = useSafeAreaInsets();
   const tabBarHeight = 50 + bottomInset;
@@ -240,6 +245,9 @@ export default function LibraryScreen() {
     setPlayingId(item.id);
     activateLockScreenControls(player, { title: item.text });
     player.play();
+    try {
+      ph?.capture('library_recording_played', { pillar: item.pillar });
+    } catch {}
     watchPlayerStatus();
   };
 
@@ -283,6 +291,9 @@ export default function LibraryScreen() {
     setNewPlaylistName('');
     setShowCreateInput(false);
     setSelectedPlaylistId(playlist.id);
+    try {
+      ph?.capture('playlist_created');
+    } catch {}
   };
 
   const handleDeleteRecording = useCallback(
@@ -304,6 +315,9 @@ export default function LibraryScreen() {
               }
               await deleteSavedRecording(item.id);
               setRecordings((prev) => prev.filter((r) => r.id !== item.id));
+              try {
+                ph?.capture('recording_deleted', { pillar: item.pillar });
+              } catch {}
             },
           },
         ]
@@ -545,13 +559,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   header: {
-    paddingTop: 80,
+    paddingTop: isSmallDevice ? 60 : 80,
     paddingHorizontal: 20,
     paddingBottom: 12,
   },
   headerTitle: {
     fontFamily: Fonts.serif,
-    fontSize: 40,
+    fontSize: isSmallDevice ? 32 : 40,
     color: Colors.text,
   },
   headerStatus: {
