@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View, Pressable, Dimensions } from 'react-native';
-
-const { width: screenWidth } = Dimensions.get('window');
-const isSmallDevice = screenWidth < 380;
+import { ScalePressable } from '@/components/ScalePressable';
 import { LinearGradient } from 'expo-linear-gradient';
 import Background from 'react-native-ambient-background';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -15,8 +13,6 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   runOnJS,
-  withRepeat,
-  withSequence,
   withTiming,
 } from 'react-native-reanimated';
 import AnimatedGlow, { GlowEvent, PresetConfig } from '@/lib/animated-glow';
@@ -41,6 +37,9 @@ import {
 } from './playback-constants';
 import { usePostHog, usePostHogScreenViewed } from '@/lib/posthog';
 
+const { width: screenWidth } = Dimensions.get('window');
+const isSmallDevice = screenWidth < 380;
+
 const triggerHaptic = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 const triggerFinishHaptic = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
@@ -63,22 +62,7 @@ export default function PlaybackScreen() {
   const ambientBtnScale = useSharedValue(1);
   const ambientBtnStyle = useAnimatedStyle(() => ({ transform: [{ scale: ambientBtnScale.value }] }));
   const finishScale = useSharedValue(1);
-  const finishPulse = useCallback(() => {
-    finishScale.value = withRepeat(
-      withSequence(
-        withTiming(1.06, { duration: 950, easing: Easing.inOut(Easing.sin) }),
-        withTiming(1, { duration: 950, easing: Easing.inOut(Easing.sin) })
-      ),
-      -1,
-      false
-    );
-  }, [finishScale]);
   const finishButtonStyle = useAnimatedStyle(() => ({ transform: [{ scale: finishScale.value }] }));
-
-  useEffect(() => {
-    finishPulse();
-    return () => cancelAnimation(finishScale);
-  }, [finishPulse, finishScale]);
 
   // ─── Derived params ───────────────────────────────────────────────────────
   const selectedFrequency = typeof freq === 'string' && freq in BOWL_AUDIO_BY_FREQUENCY ? freq : '528';
@@ -98,7 +82,7 @@ export default function PlaybackScreen() {
   const {
     isPlaying, isBowlMuted, isOscMuted, activeAmbientSounds,
     volume, recordings, currentTrackIndex, completedSetCount, sessionElapsedMs,
-    handlePlayToggle, stopSession, toggleBowlMute, toggleOscMute,
+    handlePlayToggle, stopSession, fadeOutAll, toggleBowlMute, toggleOscMute,
     toggleAmbientSound, updateVolume, ambientVolumes, updateAmbientVolume,
   } = useAudioEngine({
     selectedBowlAudio,
@@ -187,6 +171,11 @@ export default function PlaybackScreen() {
     );
   }, [cardColorProgress, finalizeCardColorTransition, messagePillarColor, resolvedCardColor]);
 
+  // Sync slider position when volume is restored from storage
+  useEffect(() => {
+    volumeProgress.value = volume / 100;
+  }, [volume, volumeProgress]);
+
   // ─── Volume gesture ───────────────────────────────────────────────────────
   const gesture = Gesture.Pan()
     .onStart((e) => {
@@ -256,13 +245,21 @@ export default function PlaybackScreen() {
   const oscIconName = !isOscMuted ? 'volume-high' : 'volume-mute';
 
   const handleFinish = async () => {
-    const prevStats = await getProfileStats();
+    fadeOutAll(900);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     const ms = stopSession();
     statsRecordedRef.current = true;
-    if (ms > 0) await recordPlaybackSession(ms);
+
+    if (ms <= 0) {
+      router.back();
+      return;
+    }
+
+    const prevStats = await getProfileStats();
+    await recordPlaybackSession(ms);
     try {
       ph?.capture('session_finished', {
-        session_ms: Math.max(0, ms),
+        session_ms: ms,
         background: selectedBackground,
         frequency: !shouldPlayBrainwave ? (selectedFrequency ?? null) : null,
         brainwave: shouldPlayBrainwave ? (selectedBrainwave ?? null) : null,
@@ -273,7 +270,7 @@ export default function PlaybackScreen() {
       pathname: '/session/complete',
       params: {
         prevTotalMs: String(prevStats.totalPlayMs),
-        sessionMs: String(Math.max(0, ms)),
+        sessionMs: String(ms),
         prevSessionCount: String(prevStats.sessionCount),
       },
     });
@@ -332,22 +329,22 @@ export default function PlaybackScreen() {
                     style={[styles.headerTaperLine, styles.headerTaperLineRight]}
                   />
                   {shouldPlayBrainwave ? (
-                    <Pressable style={styles.soundToggle} onPress={toggleOscMute}>
+                    <ScalePressable style={styles.soundToggle} onPress={toggleOscMute} scaleTo={0.94}>
                       <Ionicons name={oscIconName} size={16} color={oscIconColor} />
                       <Text style={[styles.headerLabel, { color: oscIconColor }]}>
                         {BINAURAL_BEATS[selectedBrainwave] ?? BINAURAL_BEATS.alpha} Hz
                       </Text>
-                    </Pressable>
+                    </ScalePressable>
                   ) : shouldPlayPure ? (
-                    <Pressable style={styles.soundToggle} onPress={toggleOscMute}>
+                    <ScalePressable style={styles.soundToggle} onPress={toggleOscMute} scaleTo={0.94}>
                       <Ionicons name={oscIconName} size={16} color={oscIconColor} />
                       <Text style={[styles.headerLabel, { color: oscIconColor }]}>{selectedFrequency} Hz</Text>
-                    </Pressable>
+                    </ScalePressable>
                   ) : (
-                    <Pressable style={styles.soundToggle} onPress={toggleBowlMute}>
+                    <ScalePressable style={styles.soundToggle} onPress={toggleBowlMute} scaleTo={0.94}>
                       <Ionicons name={bowlIconName} size={16} color={bowlIconColor} />
                       <Text style={[styles.headerLabel, { color: bowlIconColor }]}>{selectedFrequency} Hz</Text>
-                    </Pressable>
+                    </ScalePressable>
                   )}
                   <Text style={styles.headerValue}>
                     {shouldPlayBrainwave
@@ -389,7 +386,7 @@ export default function PlaybackScreen() {
                   cardStyle={cardAnimatedStyle}
                 >
                   <Animated.Text style={[styles.affirmationText, messageAnimatedStyle]}>
-                    "{displayMessage}"
+                    {`"${displayMessage}"`}
                   </Animated.Text>
                 </AffirmationCard>
               </AnimatedGlow>
@@ -432,10 +429,7 @@ export default function PlaybackScreen() {
                   finishScale.value = withTiming(0.92, { duration: 100, easing: Easing.out(Easing.quad) });
                 }}
                 onPressOut={() => {
-                  finishScale.value = withTiming(1, { duration: 220, easing: Easing.out(Easing.back(2)) }, (finished) => {
-                    if (!finished) return;
-                    runOnJS(finishPulse)();
-                  });
+                  finishScale.value = withTiming(1, { duration: 220, easing: Easing.out(Easing.back(2)) });
                 }}
               >
                 <Text style={styles.finishText}>Finish Session</Text>
@@ -474,7 +468,11 @@ export default function PlaybackScreen() {
         onAmbientVolumeChange={updateAmbientVolume}
       />
 
-      {makeItRainActive && isPlaying && <MakeItRain />}
+      {makeItRainActive && isPlaying && (
+        <View style={[StyleSheet.absoluteFillObject, { opacity: 0.8, zIndex: 0 }]} pointerEvents="none">
+          <MakeItRain />
+        </View>
+      )}
     </GestureHandlerRootView>
   );
 }

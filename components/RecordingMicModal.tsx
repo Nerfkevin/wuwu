@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { ScalePressable } from '@/components/ScalePressable';
 import { Ionicons } from '@expo/vector-icons';
 import {
   getRecordingPermissionsAsync,
@@ -105,9 +106,9 @@ function RecordingMicModalContent({ onClose, onApplied }: Omit<Props, 'visible'>
     <View style={styles.popup}>
       <View style={styles.popupHeader}>
         <Text style={styles.popupTitle}>Microphone</Text>
-        <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
+        <ScalePressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
           <Ionicons name="close" size={26} color={Colors.text} />
-        </Pressable>
+        </ScalePressable>
       </View>
       <Text style={styles.popupHint}>
         Pick an input below; voice recordings will use it when available.
@@ -119,9 +120,9 @@ function RecordingMicModalContent({ onClose, onApplied }: Omit<Props, 'visible'>
       ) : error ? (
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error}</Text>
-          <Pressable style={styles.retryBtn} onPress={() => void load()}>
+          <ScalePressable style={styles.retryBtn} onPress={() => void load()}>
             <Text style={styles.retryLabel}>Retry</Text>
-          </Pressable>
+          </ScalePressable>
         </View>
       ) : inputs.length === 0 ? (
         <Text style={styles.emptyText}>No extra inputs reported — using the built-in mic.</Text>
@@ -133,7 +134,7 @@ function RecordingMicModalContent({ onClose, onApplied }: Omit<Props, 'visible'>
             const sub = friendlyType(item.type);
             const busy = savingUid === item.uid;
             return (
-              <Pressable
+              <ScalePressable
                 key={item.uid}
                 style={({ pressed }) => [styles.inputRow, pressed && styles.inputRowPressed]}
                 onPress={() => void pick(item)}
@@ -150,7 +151,7 @@ function RecordingMicModalContent({ onClose, onApplied }: Omit<Props, 'visible'>
                 ) : (
                   <Ionicons name="ellipse-outline" size={22} color={Colors.textSecondary} />
                 )}
-              </Pressable>
+              </ScalePressable>
             );
           })}
         </ScrollView>

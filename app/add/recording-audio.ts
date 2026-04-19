@@ -574,7 +574,7 @@ export const renderBufferToFileWithEffects = async ({
   buffer,
   withEcho,
   withReverb,
-  reverbGain = 1,
+  reverbGain = 4,
 }: {
   buffer: AudioBuffer;
   withEcho: boolean;
@@ -589,39 +589,32 @@ export const renderBufferToFileWithEffects = async ({
   );
   const source = renderContext.createBufferSource();
   source.buffer = buffer;
+  let tail: AudioNode = source;
 
-  if (!withEcho && !withReverb) {
-    source.connect(renderContext.destination);
-  } else {
-    const dryGain = renderContext.createGain();
-    dryGain.gain.value = 0.85;
-    source.connect(dryGain);
-    dryGain.connect(renderContext.destination);
-
-    if (withEcho) {
-      const echoWet = renderContext.createGain();
-      echoWet.gain.value = 0.25;
-      const echo = renderContext.createConvolver();
-      echo.buffer = createEchoImpulse(renderContext);
-      source.connect(echo);
-      echo.connect(echoWet);
-      echoWet.connect(renderContext.destination);
-    }
-
-    if (withReverb) {
-      const reverbWet = renderContext.createGain();
-      reverbWet.gain.value = 0.22;
-      const reverb = renderContext.createConvolver();
-      reverb.buffer = createReverbImpulse(renderContext);
-      source.connect(reverb);
-      reverb.connect(reverbWet);
-      reverbWet.connect(renderContext.destination);
-    }
+  // Serial chain with default normalize=true: the convolver's built-in equal-power
+  // normalization keeps each stage near-unity so the stages can't runaway-sum into
+  // clipping. Reverb gets a peak-safe makeup boost at the end for audibility.
+  if (withEcho) {
+    const echo = renderContext.createConvolver();
+    echo.buffer = createEchoImpulse(renderContext);
+    tail.connect(echo);
+    tail = echo;
   }
 
+  if (withReverb) {
+    const reverb = renderContext.createConvolver();
+    reverb.buffer = createReverbImpulse(renderContext);
+    tail.connect(reverb);
+    tail = reverb;
+  }
+
+  tail.connect(renderContext.destination);
   source.start();
   const rendered = await renderContext.startRendering();
-  const renderedWithGain = rendered;
+  const boosted = withReverb ? applyMakeupGain(renderContext, rendered, reverbGain) : rendered;
+  const peak = getPeak(boosted);
+  const renderedWithGain =
+    peak > 0.95 ? createBufferWithGain(renderContext, boosted, 0.94 / peak) : boosted;
   const wavBytes = encodeBufferAsWav(renderedWithGain);
   const processedDir = new Directory(Paths.cache, 'processed-recordings');
   if (!processedDir.exists) {

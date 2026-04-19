@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
-  TouchableOpacity,
   FlatList,
   NativeSyntheticEvent,
   NativeScrollEvent,
@@ -18,6 +17,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
 import { usePostHogScreenViewed } from "@/lib/posthog";
+import { ScalePressable } from "@/components/ScalePressable";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -282,16 +282,16 @@ function SingleOptions({
       {slide.options.map((opt) => {
         const isSel = selected === opt;
         return (
-          <TouchableOpacity
+          <ScalePressable
             key={opt}
             style={[styles.option, isSel && styles.optionSelected]}
+            pressedStyle={styles.optionPressed}
             onPress={() => onSelect(opt)}
-            activeOpacity={0.7}
           >
             <Text style={[styles.optionText, isSel && styles.optionTextSelected]}>
               {opt}
             </Text>
-          </TouchableOpacity>
+          </ScalePressable>
         );
       })}
     </Animated.View>
@@ -331,17 +331,18 @@ function MultiOptions({
         const isSel = selected.includes(opt.label);
         const atMax = selected.length >= slide.maxSelect && !isSel;
         return (
-          <TouchableOpacity
+          <ScalePressable
             key={opt.label}
             style={[styles.option, styles.optionRow, isSel && styles.optionSelected]}
+            pressedStyle={styles.optionPressed}
             onPress={() => !atMax && onToggle(opt.label)}
-            activeOpacity={atMax ? 1 : 0.7}
+            disabled={atMax}
           >
             <Text style={styles.emoji}>{opt.emoji}</Text>
             <Text style={[styles.optionText, isSel && styles.optionTextSelected]}>
               {opt.label}
             </Text>
-          </TouchableOpacity>
+          </ScalePressable>
         );
       })}
     </Animated.View>
@@ -611,17 +612,17 @@ export default function Screen5() {
 
         {/* ── bottom: continue button ── */}
         <View style={styles.footer}>
-          <TouchableOpacity
+          <ScalePressable
             onPress={handleContinue}
-            activeOpacity={canContinue ? 0.75 : 1}
             disabled={!canContinue}
+            scaleTo={0.96}
           >
             <Animated.View style={[styles.continueButton, { backgroundColor: buttonBg }]}>
               <Animated.Text style={[styles.continueText, { color: buttonTextColor }]}>
                 continue
               </Animated.Text>
             </Animated.View>
-          </TouchableOpacity>
+          </ScalePressable>
         </View>
 
       </SafeAreaView>
@@ -725,6 +726,9 @@ const styles = StyleSheet.create({
   optionSelected: {
     borderColor: "#fff",
     backgroundColor: "rgba(255,255,255,0.07)",
+  },
+  optionPressed: {
+    backgroundColor: "rgba(0,0,0,0.22)",
   },
   optionText: {
     fontSize: isSmallDevice ? 13 : 14,

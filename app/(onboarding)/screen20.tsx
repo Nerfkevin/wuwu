@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
-  TouchableOpacity,
   PanResponder,
 } from "react-native";
 import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
@@ -17,6 +16,7 @@ import Svg, { Path as SvgPath } from "react-native-svg";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
 import { usePostHogScreenViewed } from "@/lib/posthog";
+import { ScalePressable } from "@/components/ScalePressable";
 import MakeItRain from "@/app/session/make-it-rain";
 import { createAudioPlayer } from "@/lib/expo-audio";
 
@@ -113,7 +113,7 @@ export default function Screen20() {
     }, TYPEWRITER_MS);
     return () => {
       clearInterval(id);
-      try { soundRef.current?.stop(); soundRef.current?.remove(); } catch { /* ignore */ }
+      try { soundRef.current?.pause(); soundRef.current?.remove(); } catch { /* ignore */ }
     };
   }, []);
 
@@ -284,29 +284,31 @@ export default function Screen20() {
                   ))}
                 </Svg>
                 {hasSignature && (
-                  <TouchableOpacity style={styles.clearBtn} onPress={handleClear}>
+                  <ScalePressable style={styles.clearBtn} onPress={handleClear}>
                     <Text style={styles.clearText}>clear</Text>
-                  </TouchableOpacity>
+                  </ScalePressable>
                 )}
               </View>
-              <Text style={styles.hint}>sign as a reminder of the promise you're making to yourself.</Text>
+              <Text style={styles.hint}>
+                {"sign as a reminder of the promise you're making to yourself."}
+              </Text>
             </View>
           </Animated.View>
         </View>
 
         {/* Footer */}
         <View style={styles.footer}>
-          <TouchableOpacity
+          <ScalePressable
             onPress={hasSignature ? handleSign : undefined}
-            activeOpacity={hasSignature ? 0.75 : 1}
             disabled={!hasSignature}
+            scaleTo={0.96}
           >
             <Animated.View style={[styles.signButton, { backgroundColor: buttonBg }]}>
               <Animated.Text style={[styles.signButtonText, { color: buttonTextColor }]}>
                 sign
               </Animated.Text>
             </Animated.View>
-          </TouchableOpacity>
+          </ScalePressable>
         </View>
       </SafeAreaView>
     </Animated.View>

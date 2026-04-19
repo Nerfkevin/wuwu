@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
-  TouchableOpacity,
 } from "react-native";
 import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -14,6 +13,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
 import { usePostHogScreenViewed } from "@/lib/posthog";
+import { ScalePressable } from "@/components/ScalePressable";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -207,32 +207,32 @@ export default function Screen18() {
           {OPTIONS.map((opt) => {
             const isSel = selected === opt.label;
             return (
-              <TouchableOpacity
+              <ScalePressable
                 key={opt.label}
                 style={[styles.option, isSel && styles.optionSelected]}
+                pressedStyle={styles.optionPressed}
                 onPress={() => handleSelect(opt.label)}
-                activeOpacity={0.7}
               >
                 <Text style={[styles.optionText, isSel && styles.optionTextSelected]}>
                   {opt.emoji} {opt.label}
                 </Text>
-              </TouchableOpacity>
+              </ScalePressable>
             );
           })}
         </Animated.View>
 
         <View style={styles.footer}>
-          <TouchableOpacity
+          <ScalePressable
             onPress={handleContinue}
-            activeOpacity={selected ? 0.75 : 1}
             disabled={!selected}
+            scaleTo={0.96}
           >
             <Animated.View style={[styles.continueButton, { backgroundColor: buttonBg }]}>
               <Animated.Text style={[styles.continueText, { color: buttonTextColor }]}>
                 continue
               </Animated.Text>
             </Animated.View>
-          </TouchableOpacity>
+          </ScalePressable>
         </View>
 
       </SafeAreaView>
@@ -289,6 +289,9 @@ const styles = StyleSheet.create({
   optionSelected: {
     borderColor: "#fff",
     backgroundColor: "rgba(255,255,255,0.07)",
+  },
+  optionPressed: {
+    backgroundColor: "rgba(0,0,0,0.22)",
   },
   optionText: {
     fontSize: isSmallDevice ? 13 : 14,

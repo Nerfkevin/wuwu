@@ -5,6 +5,8 @@ import { AudioContext } from './audio-api-core';
 import { configureMixedPlaybackAsync } from './audio-playback';
 import { BINAURAL_BEATS, BINAURAL_CARRIER } from '../app/session/playback-constants';
 
+type PreviewGain = ReturnType<InstanceType<typeof AudioContext>['createGain']>;
+
 const BOWL_ASSETS: Record<string, any> = {
   '174': require('../assets/images/bowl/174bowl.mp3'),
   '285': require('../assets/images/bowl/285bowl.mp3'),
@@ -21,64 +23,47 @@ const FADE_STEPS = 20;
 const FADE_MS = 750;
 const TOTAL_MS = 3000;
 
-// ─── Preloaded bowl players ────────────────────────────────────────────────────
-// Created once (lazily on first tap) and kept alive for the app lifetime so
-// switching between bowls is synchronous — no reload gap.
+// ─── Engine state ──────────────────────────────────────────────────────────────
+// Exactly one "engine" owns the iOS AVAudioSession at any time:
+//   - 'bowl' → expo-audio players (mp3 samples)
+//   - 'osc'  → rn-audio-api AudioContext (pure / binaural oscillators)
+//   - 'idle' → nothing playing, no resources allocated
+// Switching engines requires fully tearing down the previous engine BEFORE the
+// new one starts, otherwise on iOS the two fight over the audio session and the
+// previous sound keeps playing while the new one is silent.
+type Engine = 'idle' | 'bowl' | 'osc';
+let engine: Engine = 'idle';
+
+// Bumped on every state-changing event. Async continuations capture their
+// `runId` at kick-off and bail if it no longer matches.
+let runId = 0;
+
+// ─── Bowl (expo-audio) state ───────────────────────────────────────────────────
 let bowlPlayers: Map<string, AudioPlayer> | null = null;
 let audioModeConfigured = false;
+let currentBowlId: string | null = null;
+// Timers live in two pools: "active" (fade-in/hold/fade-out of the current
+// preview) and "outgoing" (fade-out of a displaced bowl during crossfade).
+// Outgoing timers survive a run-id bump so the crossfade tail keeps going.
+let bowlActiveTimers: ReturnType<typeof setTimeout>[] = [];
+let bowlOutgoingTimers: ReturnType<typeof setTimeout>[] = [];
 
-// ─── Persistent oscillator AudioContext ────────────────────────────────────────
-// Never closed between preview switches — avoids the native context creation gap.
-let oscCtx: AudioContext | null = null;
-let oscFadeGain: GainNode | null = null;
-let oscActiveNodes: Array<{ stop(when?: number): void }> = [];
-
-const ensureOscCtx = (): AudioContext => {
-  if (!oscCtx) {
-    oscCtx = new AudioContext();
-  }
-  return oscCtx;
+const clearBowlActiveTimers = () => {
+  bowlActiveTimers.forEach(clearTimeout);
+  bowlActiveTimers = [];
+};
+const clearBowlOutgoingTimers = () => {
+  bowlOutgoingTimers.forEach(clearTimeout);
+  bowlOutgoingTimers = [];
 };
 
-// fadeDuration: seconds. Default 0.05 for quick cleanup; pass FADE_MS/1000 for crossfade.
-const cutoverOscAudio = (fadeDuration = 0.05) => {
-  if (oscCtx && oscFadeGain) {
-    const now = oscCtx.currentTime;
-    oscFadeGain.gain.cancelScheduledValues(now);
-    oscFadeGain.gain.setValueAtTime(oscFadeGain.gain.value, now);
-    oscFadeGain.gain.linearRampToValueAtTime(0, now + fadeDuration);
-  }
-  const stopAt = (oscCtx?.currentTime ?? 0) + fadeDuration + 0.01;
-  oscActiveNodes.forEach(n => { try { n.stop(stopAt); } catch { /* best effort */ } });
-  oscActiveNodes = [];
-  oscFadeGain = null;
-};
-
-// ─── Bowl crossfade state ──────────────────────────────────────────────────────
-// Separate timer array so clearPreviewTimers() doesn't cancel an outgoing fade.
-let currentlyPlayingBowlId: string | null = null;
-let crossfadeOutTimers: ReturnType<typeof setTimeout>[] = [];
-
-const clearCrossfadeOutTimers = () => {
-  crossfadeOutTimers.forEach(clearTimeout);
-  crossfadeOutTimers = [];
-};
-
-const stopAllBowlPlayersExcept = (exceptId: string) => {
-  if (!bowlPlayers) return;
-  for (const [id, p] of bowlPlayers.entries()) {
-    if (id === exceptId) continue;
-    try { p.stop(); } catch { /* best effort */ }
-    try { (p as any).volume = 0; } catch { /* best effort */ }
-  }
-};
-
-const releaseOscCtx = () => {
-  cutoverOscAudio();
-  if (oscCtx) {
-    try { oscCtx.close(); } catch { /* best effort */ }
-    oscCtx = null;
-  }
+const silencePlayer = (p: AudioPlayer) => {
+  // Belt-and-suspenders: on iOS, pause() alone can be ignored if the player
+  // just started, and remove() may not stop the native AVPlayer synchronously
+  // if any JS reference is still held. Stack all silencing options.
+  try { (p as any).volume = 0; } catch { /* best effort */ }
+  try { (p as any).muted = true; } catch { /* best effort */ }
+  try { p.pause(); } catch { /* best effort */ }
 };
 
 const getBowlPlayers = (): Map<string, AudioPlayer> => {
@@ -93,234 +78,243 @@ const getBowlPlayers = (): Map<string, AudioPlayer> => {
   return bowlPlayers;
 };
 
-const stopAllBowlPlayers = () => {
+const silenceAllBowlsExcept = (exceptId: string | null) => {
   if (!bowlPlayers) return;
-  for (const p of bowlPlayers.values()) {
-    try { p.stop(); } catch { /* best effort */ }
-    try { (p as any).volume = 0; } catch { /* best effort */ }
+  for (const [id, p] of bowlPlayers.entries()) {
+    if (id === exceptId) continue;
+    silencePlayer(p);
   }
 };
 
-// Fully destroy all players and reset the cache so the next AudioContext creation
-// (react-native-audio-api) does not conflict with live expo-audio sessions.
-const releaseAllBowlPlayers = () => {
-  if (!bowlPlayers) return;
+/** Fully tear down the bowl engine. Destroys all cached players so that the
+ *  native AVAudioSession they hold is released — otherwise rn-audio-api's
+ *  AudioContext can't claim the session and oscillators stay silent. */
+const teardownBowlEngine = () => {
+  clearBowlActiveTimers();
+  clearBowlOutgoingTimers();
+  currentBowlId = null;
+  if (!bowlPlayers) {
+    audioModeConfigured = false;
+    return;
+  }
   for (const p of bowlPlayers.values()) {
-    try { p.stop(); } catch { /* best effort */ }
+    silencePlayer(p);
     try { p.remove(); } catch { /* best effort */ }
   }
   bowlPlayers = null;
   audioModeConfigured = false;
 };
 
-// ─── Preview controller ────────────────────────────────────────────────────────
+// ─── Oscillator (rn-audio-api) state ───────────────────────────────────────────
+let oscCtx: AudioContext | null = null;
+let oscFadeGain: PreviewGain | null = null;
+let oscActiveNodes: Array<{ stop(when?: number): void }> = [];
+let oscCleanupTimer: ReturnType<typeof setTimeout> | null = null;
+
+const clearOscCleanupTimer = () => {
+  if (oscCleanupTimer) { clearTimeout(oscCleanupTimer); oscCleanupTimer = null; }
+};
+
+const ensureOscCtx = (): AudioContext => {
+  if (!oscCtx) oscCtx = new AudioContext();
+  return oscCtx;
+};
+
+/** Fade the current oscillator output to 0 and stop its nodes. Keeps the
+ *  AudioContext alive so the next osc preview starts without a creation gap. */
+const fadeOutOscNodes = (fadeDuration = 0.05) => {
+  if (oscCtx && oscFadeGain) {
+    const now = oscCtx.currentTime;
+    try {
+      oscFadeGain.gain.cancelScheduledValues(now);
+      oscFadeGain.gain.setValueAtTime(oscFadeGain.gain.value, now);
+      oscFadeGain.gain.linearRampToValueAtTime(0, now + fadeDuration);
+    } catch { /* best effort */ }
+  }
+  const stopAt = (oscCtx?.currentTime ?? 0) + fadeDuration + 0.01;
+  oscActiveNodes.forEach(n => { try { n.stop(stopAt); } catch { /* best effort */ } });
+  oscActiveNodes = [];
+  oscFadeGain = null;
+};
+
+/** Fully tear down the osc engine. Closes the AudioContext so the iOS audio
+ *  session is released and expo-audio can take over cleanly. */
+const teardownOscEngine = () => {
+  clearOscCleanupTimer();
+  fadeOutOscNodes(0.05);
+  if (oscCtx) {
+    try { oscCtx.close(); } catch { /* best effort */ }
+    oscCtx = null;
+  }
+  oscFadeGain = null;
+  oscActiveNodes = [];
+};
+
+// ─── Engine switching ──────────────────────────────────────────────────────────
+/** Ensure the requested engine is the active one. If a different engine is
+ *  currently active it is FULLY torn down first so there's no audio-session
+ *  contention on iOS. Returns after teardown completes (synchronous here). */
+const switchToEngine = (target: Engine) => {
+  if (engine === target) return;
+  if (engine === 'bowl' && target !== 'bowl') teardownBowlEngine();
+  if (engine === 'osc' && target !== 'osc') teardownOscEngine();
+  engine = target;
+};
+
+// ─── Preview controller (owner + key bookkeeping) ──────────────────────────────
 const previewController = {
-  audioCtx: null as AudioContext | null,
-  timers: [] as ReturnType<typeof setTimeout>[],
   playingKey: null as string | null,
   ownerId: null as number | null,
-  runId: 0,
 };
 
 let nextOwnerId = 1;
 
-const clearPreviewTimers = () => {
-  previewController.timers.forEach(clearTimeout);
-  previewController.timers = [];
-};
-
-const releasePreviewAudioContext = (audioCtx: AudioContext | null) => {
-  if (!audioCtx) return;
-  try { audioCtx.close(); } catch { /* best effort */ }
-};
-
-const stopManagedPreview = (ownerId?: number, releaseOsc = true) => {
-  // Only skip if another hook instance owns the active preview.
-  // Allow cleanup when nothing is playing (ownerId === null) so BG-switch
-  // always tears down audio even if the previous preview already expired.
-  if (
-    ownerId != null &&
-    previewController.ownerId != null &&
-    previewController.ownerId !== ownerId
-  ) return;
-
-  previewController.runId += 1;
-  clearPreviewTimers();
-  clearCrossfadeOutTimers();
-  currentlyPlayingBowlId = null;
-  releaseAllBowlPlayers();
-  releasePreviewAudioContext(previewController.audioCtx);
-  previewController.audioCtx = null;
-  previewController.playingKey = null;
-  previewController.ownerId = null;
-  if (releaseOsc) releaseOscCtx();
-};
-
-/** Fade out current preview over FADE_MS (bowl + oscillator). Keeps osc AudioContext open for next tap. */
-const fadeOutManagedPreview = (ownerId?: number) => {
-  if (
-    ownerId != null &&
-    previewController.ownerId != null &&
-    previewController.ownerId !== ownerId
-  ) return;
-
-  const hasSomething =
-    previewController.playingKey != null ||
-    currentlyPlayingBowlId != null ||
-    oscFadeGain != null;
-  if (!hasSomething) return;
-
-  previewController.runId += 1;
-  clearPreviewTimers();
-  clearCrossfadeOutTimers();
-
-  const bowlId = currentlyPlayingBowlId;
-  if (bowlId && bowlPlayers?.has(bowlId)) {
-    stopAllBowlPlayersExcept(bowlId);
-    const outgoing = bowlPlayers.get(bowlId)!;
-    const startVol = Math.max(0.001, Math.min(1, (outgoing as any).volume ?? 1));
-    const stepMs = FADE_MS / FADE_STEPS;
-    for (let i = 1; i <= FADE_STEPS; i++) {
-      const ii = i;
-      crossfadeOutTimers.push(setTimeout(() => {
-        try { (outgoing as any).volume = startVol * (1 - ii / FADE_STEPS); } catch { /* best effort */ }
-      }, ii * stepMs));
-    }
-    crossfadeOutTimers.push(setTimeout(() => {
-      try { outgoing.pause(); } catch { /* best effort */ }
-      try { (outgoing as any).volume = 0; } catch { /* best effort */ }
-      currentlyPlayingBowlId = null;
-    }, FADE_MS + 50));
-  } else {
-    currentlyPlayingBowlId = null;
-  }
-
-  cutoverOscAudio(FADE_MS / 1000);
-
-  releasePreviewAudioContext(previewController.audioCtx);
-  previewController.audioCtx = null;
-  previewController.playingKey = null;
-  previewController.ownerId = null;
-};
-
-const schedulePreviewTimer = (runId: number, cb: () => void, delayMs: number) => {
-  previewController.timers.push(
+const scheduleBowlActive = (expectedRunId: number, cb: () => void, delayMs: number) => {
+  bowlActiveTimers.push(
     setTimeout(() => {
-      if (previewController.runId !== runId) return;
+      if (runId !== expectedRunId) return;
       cb();
     }, delayMs)
   );
 };
 
+// ─── Public teardown ───────────────────────────────────────────────────────────
+const hardStop = (ownerId?: number) => {
+  if (
+    ownerId != null &&
+    previewController.ownerId != null &&
+    previewController.ownerId !== ownerId
+  ) return;
+  runId += 1;
+  teardownBowlEngine();
+  teardownOscEngine();
+  engine = 'idle';
+  previewController.playingKey = null;
+  previewController.ownerId = null;
+};
+
+/** Stop the currently-playing preview. Called when the user changes the
+ *  background. Bowl is killed IMMEDIATELY (pause + muted + remove) — no fade,
+ *  no lingering tail — so the audio session is clean before the user taps a
+ *  new preview. Osc is faded out over FADE_MS for a smoother transition since
+ *  it doesn't suffer from the same session-hogging issue. */
+const softStop = (ownerId?: number) => {
+  if (
+    ownerId != null &&
+    previewController.ownerId != null &&
+    previewController.ownerId !== ownerId
+  ) return;
+
+  const activeEngine = engine;
+  runId += 1;
+  clearBowlActiveTimers();
+  clearOscCleanupTimer();
+
+  if (activeEngine === 'bowl') {
+    teardownBowlEngine();
+    engine = 'idle';
+  } else if (activeEngine === 'osc') {
+    fadeOutOscNodes(FADE_MS / 1000);
+    oscCleanupTimer = setTimeout(() => {
+      oscFadeGain = null;
+      oscActiveNodes = [];
+      if (engine === 'osc') engine = 'idle';
+    }, FADE_MS + 50);
+  } else {
+    engine = 'idle';
+  }
+
+  previewController.playingKey = null;
+  previewController.ownerId = null;
+};
+
 // ─── Hook ──────────────────────────────────────────────────────────────────────
 export function useFrequencyPreview() {
   const ownerIdRef = useRef<number | null>(null);
+  if (ownerIdRef.current == null) ownerIdRef.current = nextOwnerId++;
 
-  if (ownerIdRef.current == null) {
-    ownerIdRef.current = nextOwnerId++;
-  }
+  const cleanup = useCallback(() => { hardStop(ownerIdRef.current ?? undefined); }, []);
+  const fadeOutPreview = useCallback(() => { softStop(ownerIdRef.current ?? undefined); }, []);
 
-  const cleanup = useCallback(() => {
-    stopManagedPreview(ownerIdRef.current ?? undefined);
-  }, []);
-
-  const fadeOutPreview = useCallback(() => {
-    fadeOutManagedPreview(ownerIdRef.current ?? undefined);
-  }, []);
-
-  // ── Bowl (preloaded, crossfade switch) ──────────────────────────────────────
+  // ── Bowl ────────────────────────────────────────────────────────────────────
   const _playBowl = useCallback(async (freqId: string, key: string) => {
-    // Configure audio session once at app level
+    // Engine switch: if osc was active, tear it down fully (closes AudioContext)
+    // so expo-audio can own the iOS session.
+    switchToEngine('bowl');
+
     if (!audioModeConfigured) {
       try { await configureMixedPlaybackAsync(); audioModeConfigured = true; } catch { /* best effort */ }
     }
 
-    // 1. Crossfade: fade out the outgoing bowl over FADE_MS; stop all others immediately.
-    //    Uses a separate timer array so clearPreviewTimers() can't cancel the outgoing fade.
-    clearCrossfadeOutTimers();
-    const prevBowlId = currentlyPlayingBowlId;
+    // Crossfade from previous bowl (if any) using the outgoing timer pool so a
+    // subsequent run-id bump doesn't cancel the tail.
+    clearBowlOutgoingTimers();
+    const prevBowlId = currentBowlId;
     if (prevBowlId !== null && prevBowlId !== freqId && bowlPlayers?.has(prevBowlId)) {
       const outgoing = bowlPlayers.get(prevBowlId)!;
       const startVol = Math.max(0.001, Math.min(1, (outgoing as any).volume ?? 1));
       const stepMs = FADE_MS / FADE_STEPS;
       for (let i = 1; i <= FADE_STEPS; i++) {
         const ii = i;
-        crossfadeOutTimers.push(setTimeout(() => {
+        bowlOutgoingTimers.push(setTimeout(() => {
           try { (outgoing as any).volume = startVol * (1 - ii / FADE_STEPS); } catch { /* best effort */ }
         }, ii * stepMs));
       }
-      crossfadeOutTimers.push(setTimeout(() => {
-        try { outgoing.pause(); } catch { /* best effort */ }
-        try { (outgoing as any).volume = 0; } catch { /* best effort */ }
+      bowlOutgoingTimers.push(setTimeout(() => {
+        silencePlayer(outgoing);
       }, FADE_MS + 50));
-      stopAllBowlPlayersExcept(prevBowlId);
+      silenceAllBowlsExcept(prevBowlId);
     } else {
-      stopAllBowlPlayers();
+      silenceAllBowlsExcept(freqId);
     }
-    currentlyPlayingBowlId = freqId;
+    currentBowlId = freqId;
 
-    clearPreviewTimers();
-    cutoverOscAudio();
-    releasePreviewAudioContext(previewController.audioCtx);
-    previewController.audioCtx = null;
-    previewController.runId += 1;
-    const runId = previewController.runId;
+    clearBowlActiveTimers();
+    runId += 1;
+    const myRun = runId;
     previewController.ownerId = ownerIdRef.current;
     previewController.playingKey = key;
 
-    // 2. Get the preloaded player and seek to start
     const player = getBowlPlayers().get(freqId);
     if (!player) return;
 
     (player as any).volume = 0;
+    try { (player as any).muted = false; } catch { /* best effort */ }
     await player.seekTo(0).catch(() => {});
+    if (runId !== myRun || engine !== 'bowl') return;
 
-    // Bail if another bowl was tapped while seekTo was running
-    if (previewController.runId !== runId) return;
-
-    // 3. Play
     player.play();
 
-    // Fade in
     const stepMs = FADE_MS / FADE_STEPS;
     for (let i = 1; i <= FADE_STEPS; i++) {
-      schedulePreviewTimer(runId, () => { (player as any).volume = i / FADE_STEPS; }, i * stepMs);
+      scheduleBowlActive(myRun, () => { (player as any).volume = i / FADE_STEPS; }, i * stepMs);
     }
-    // Fade out
     const fadeOutStart = TOTAL_MS - FADE_MS;
     for (let i = 1; i <= FADE_STEPS; i++) {
-      schedulePreviewTimer(runId, () => { (player as any).volume = 1 - i / FADE_STEPS; }, fadeOutStart + i * stepMs);
+      scheduleBowlActive(myRun, () => { (player as any).volume = 1 - i / FADE_STEPS; }, fadeOutStart + i * stepMs);
     }
-    // Cleanup at end
-    schedulePreviewTimer(runId, () => {
-      try { player.pause(); } catch { /* best effort */ }
-      (player as any).volume = 0;
-      clearPreviewTimers();
+    scheduleBowlActive(myRun, () => {
+      silencePlayer(player);
+      clearBowlActiveTimers();
       previewController.playingKey = null;
       previewController.ownerId = null;
-      currentlyPlayingBowlId = null;
+      currentBowlId = null;
     }, TOTAL_MS + 50);
   }, []);
 
-  // ── Pure sine ────────────────────────────────────────────────────────────────
+  // ── Pure sine ──────────────────────────────────────────────────────────────
   const _playPure = useCallback(async (hz: number, key: string) => {
-    // Stop bowls + clear timers, but keep the persistent oscCtx alive
-    stopAllBowlPlayers();
-    clearPreviewTimers();
-    cutoverOscAudio(FADE_MS / 1000);
-    previewController.runId += 1;
-    const runId = previewController.runId;
+    switchToEngine('osc');
+    clearOscCleanupTimer();
+    fadeOutOscNodes(FADE_MS / 1000);
+    runId += 1;
+    const myRun = runId;
     previewController.ownerId = ownerIdRef.current;
     previewController.playingKey = key;
 
     const ctx = ensureOscCtx();
-    // Must await resume — on iOS the context auto-suspends after silence and
-    // currentTime is frozen; scheduling against a stale time causes oscillators
-    // to expire before they ever audibly play.
     try { await ctx.resume(); } catch { /* best effort */ }
-
-    // Bail out if another tap arrived while we were waiting for resume
-    if (previewController.runId !== runId) return;
+    if (runId !== myRun || engine !== 'osc') return;
 
     const now = ctx.currentTime;
     const fadeS = FADE_MS / 1000;
@@ -342,9 +336,9 @@ export function useFrequencyPreview() {
     osc.stop(now + totalS + 0.05);
     oscActiveNodes = [osc];
 
-    schedulePreviewTimer(runId, () => {
-      if (previewController.runId !== runId) return;
-      clearPreviewTimers();
+    clearOscCleanupTimer();
+    oscCleanupTimer = setTimeout(() => {
+      if (runId !== myRun) return;
       oscFadeGain = null;
       oscActiveNodes = [];
       previewController.playingKey = null;
@@ -352,23 +346,19 @@ export function useFrequencyPreview() {
     }, TOTAL_MS + 200);
   }, []);
 
-  // ── Binaural beat ────────────────────────────────────────────────────────────
+  // ── Binaural beat ──────────────────────────────────────────────────────────
   const _playBinaural = useCallback(async (beat: number, key: string) => {
-    // Stop bowls + clear timers, but keep the persistent oscCtx alive
-    stopAllBowlPlayers();
-    clearPreviewTimers();
-    cutoverOscAudio(FADE_MS / 1000);
-    previewController.runId += 1;
-    const runId = previewController.runId;
+    switchToEngine('osc');
+    clearOscCleanupTimer();
+    fadeOutOscNodes(FADE_MS / 1000);
+    runId += 1;
+    const myRun = runId;
     previewController.ownerId = ownerIdRef.current;
     previewController.playingKey = key;
 
     const ctx = ensureOscCtx();
-    // Must await resume — same reason as _playPure above
     try { await ctx.resume(); } catch { /* best effort */ }
-
-    // Bail out if another tap arrived while we were waiting for resume
-    if (previewController.runId !== runId) return;
+    if (runId !== myRun || engine !== 'osc') return;
 
     const now = ctx.currentTime;
     const fadeS = FADE_MS / 1000;
@@ -404,9 +394,9 @@ export function useFrequencyPreview() {
     rightOsc.stop(now + totalS + 0.05);
     oscActiveNodes = [leftOsc, rightOsc];
 
-    schedulePreviewTimer(runId, () => {
-      if (previewController.runId !== runId) return;
-      clearPreviewTimers();
+    clearOscCleanupTimer();
+    oscCleanupTimer = setTimeout(() => {
+      if (runId !== myRun) return;
       oscFadeGain = null;
       oscActiveNodes = [];
       previewController.playingKey = null;
@@ -414,10 +404,10 @@ export function useFrequencyPreview() {
     }, TOTAL_MS + 200);
   }, []);
 
-  // ── Public API ───────────────────────────────────────────────────────────────
+  // ── Public API ─────────────────────────────────────────────────────────────
   const previewFrequency = useCallback((freqId: string, bg: string) => {
     const key = `${bg}:${freqId}`;
-    if (previewController.playingKey === key) return;
+    if (previewController.playingKey === key && engine !== 'idle') return;
     if (bg === 'Singing Bowl') {
       void _playBowl(freqId, key);
     } else if (bg === 'Pure') {
@@ -428,7 +418,7 @@ export function useFrequencyPreview() {
 
   const previewBrainwave = useCallback((brainwaveId: string) => {
     const key = `brainwave:${brainwaveId}`;
-    if (previewController.playingKey === key) return;
+    if (previewController.playingKey === key && engine !== 'idle') return;
     const beat = BINAURAL_BEATS[brainwaveId];
     if (beat != null) void _playBinaural(beat, key);
   }, [_playBinaural]);

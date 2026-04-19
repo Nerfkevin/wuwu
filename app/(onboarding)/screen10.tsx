@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
-  TouchableOpacity,
   FlatList,
   Image,
   NativeSyntheticEvent,
@@ -18,6 +17,7 @@ import * as Haptics from "expo-haptics";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
 import { usePostHogScreenViewed } from "@/lib/posthog";
+import { ScalePressable } from "@/components/ScalePressable";
 import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 
 const TYPEWRITER_MS = 50;
@@ -158,13 +158,12 @@ function TextSlide({
       {/* translucent quote box — fades in after typewriter finishes */}
       <Animated.View style={[text.quoteBox, { opacity: quoteOpacity }]}>
         <Text style={text.quote}>{item.quote}</Text>
-        <TouchableOpacity
+        <ScalePressable
           onPress={() => WebBrowser.openBrowserAsync(item.link)}
-          activeOpacity={0.7}
         >
           <Text style={text.author}>{item.author}</Text>
           <Text style={text.journal}>{item.journal}</Text>
-        </TouchableOpacity>
+        </ScalePressable>
       </Animated.View>
     </View>
   );
@@ -409,17 +408,17 @@ export default function Screen10() {
 
       {/* Continue button — sticky footer */}
       <SafeAreaView edges={["bottom"]} style={styles.footer}>
-        <TouchableOpacity
+        <ScalePressable
           onPress={titleDone ? handleContinue : undefined}
-          activeOpacity={titleDone ? 0.85 : 1}
           disabled={!titleDone}
+          scaleTo={0.96}
         >
           <Animated.View style={[styles.btn, { backgroundColor: buttonBg }]}>
             <Animated.Text style={[styles.btnText, { color: buttonTextColor }]}>
               continue
             </Animated.Text>
           </Animated.View>
-        </TouchableOpacity>
+        </ScalePressable>
       </SafeAreaView>
     </Animated.View>
   );

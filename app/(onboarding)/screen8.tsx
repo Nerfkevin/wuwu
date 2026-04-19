@@ -157,7 +157,7 @@ const dotStyles = StyleSheet.create({
   },
   fill: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#A78BFA",
+    backgroundColor: "#22c55e",
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
@@ -256,7 +256,7 @@ export default function Screen8() {
         next[i] = true;
         return next;
       });
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       // scale up + go green — completes ~300ms, then stays visible until next phase
       Animated.parallel([
         Animated.spring(textScale, {
@@ -299,7 +299,7 @@ export default function Screen8() {
 
   const textColor = textColorAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ["#e8e0f0", "#C4B5FD"],
+    outputRange: ["#e8e0f0", "#4ade80"],
   });
 
   return (

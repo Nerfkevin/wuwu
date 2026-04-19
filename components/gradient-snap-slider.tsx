@@ -35,8 +35,10 @@ export default function GradientSnapSlider({
   const trackWidth = useSharedValue(0);
   const isDragging = useSharedValue(false);
 
-  const clampedRatio = (v: number) =>
-    (v - minimumValue) / (maximumValue - minimumValue);
+  const clampedRatio = (v: number) => {
+    'worklet';
+    return (v - minimumValue) / (maximumValue - minimumValue);
+  };
 
   const fillRatio = useSharedValue(clampedRatio(value));
 

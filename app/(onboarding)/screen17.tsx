@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
-import { View, Text, StyleSheet, Image, Dimensions, Animated, Platform, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, Image, Dimensions, Animated, Platform } from "react-native";
 import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useOnboardingNav } from "./use-onboarding-nav";
@@ -9,6 +9,7 @@ import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { scheduleAffirmationReminder } from "@/lib/affirmation-reminder";
 import { Fonts } from "@/constants/theme";
+import { ScalePressable } from "@/components/ScalePressable";
 
 const TYPEWRITER_MS = 33;
 const LETTER_FADE_MS = 480;
@@ -244,17 +245,17 @@ export default function Screen17() {
         </View>
 
         <View style={[styles.footer, { paddingBottom: insets.bottom + 10 }]}>
-          <TouchableOpacity
+          <ScalePressable
             onPress={buttonEnabled ? handleContinue : undefined}
-            activeOpacity={buttonEnabled ? 0.75 : 1}
             disabled={!buttonEnabled}
+            scaleTo={0.96}
           >
             <Animated.View style={[styles.continueButton, { backgroundColor: buttonBackgroundColor }]}>
               <Animated.Text style={[styles.continueButtonText, { color: buttonTextColor }]}>
                 continue
               </Animated.Text>
             </Animated.View>
-          </TouchableOpacity>
+          </ScalePressable>
         </View>
       </SafeAreaView>
     </Animated.View>

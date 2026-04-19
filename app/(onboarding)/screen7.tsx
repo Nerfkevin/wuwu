@@ -6,7 +6,6 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
-  TouchableOpacity,
   FlatList,
   NativeSyntheticEvent,
   NativeScrollEvent,
@@ -20,6 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
 import { usePostHogScreenViewed } from "@/lib/posthog";
+import { ScalePressable } from "@/components/ScalePressable";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -147,10 +147,8 @@ const slides: Slide[] = [
   },
   {
     id: "5",
-    type: "multi",
+    type: "single",
     question: "what's holding you back from the more abundant version of yourself?",
-    hint: "(choose up to 3)",
-    maxSelect: 3,
     storageKey: "onboarding_blocks",
     options: [
       "😅 I lose momentum or forget",
@@ -313,16 +311,17 @@ function MultiOptions({
         const isSel = selected.includes(opt);
         const atMax = selected.length >= slide.maxSelect && !isSel;
         return (
-          <TouchableOpacity
+          <ScalePressable
             key={opt}
             style={[styles.option, styles.optionRow, isSel && styles.optionSelected]}
+            pressedStyle={styles.optionPressed}
             onPress={() => !atMax && onToggle(opt)}
-            activeOpacity={atMax ? 1 : 0.7}
+            disabled={atMax}
           >
             <Text style={[styles.optionText, isSel && styles.optionTextSelected]}>
               {opt}
             </Text>
-          </TouchableOpacity>
+          </ScalePressable>
         );
       })}
     </Animated.View>
@@ -363,16 +362,16 @@ function SingleOptions({
       {slide.options.map((opt) => {
         const isSel = selected === opt;
         return (
-          <TouchableOpacity
+          <ScalePressable
             key={opt}
             style={[styles.option, styles.optionRow, isSel && styles.optionSelected]}
+            pressedStyle={styles.optionPressed}
             onPress={() => onSelect(opt)}
-            activeOpacity={0.7}
           >
             <Text style={[styles.optionText, styles.optionTextWrap, isSel && styles.optionTextSelected]}>
               {opt}
             </Text>
-          </TouchableOpacity>
+          </ScalePressable>
         );
       })}
     </Animated.View>
@@ -386,7 +385,7 @@ const goalBodyCopy: Record<string, string> = {
     "we'll help you make sure the first voice your subconscious hears every day is your own empowering truth.",
   "💰 Unlock effortless wealth":
     "daily affirmations shift your mind from scarcity thinking to magnetic wealth attraction.",
-  "❤️ Magnetize loving relationships":
+  "❤️ Attract loving relationships":
     "love starts with self-belief. we'll help you dissolve the patterns that push connection away and replace them with genuine worthiness.",
   "😌 Find calm & peace":
     "we'll guide you with gentle reminders and background plays, turning inconsistency into your quiet daily wins.",
@@ -556,7 +555,7 @@ function PersonalizedCard({
 
             {highestSelf ? (
               <View style={[cardStyles.goalCard, cardStyles.highestSelfCard]}>
-                <Text style={cardStyles.hsLabel}>where you're headed</Text>
+                <Text style={cardStyles.hsLabel}>{"where you're headed"}</Text>
                 <Text style={[cardStyles.goalCardTitle, cardStyles.centered]}>
                   {highestSelf}
                 </Text>
@@ -572,7 +571,7 @@ function PersonalizedCard({
         {/* ── fixed closing section ── */}
         <Animated.View style={[cardStyles.closingSection, { opacity: fadeContent }]}>
           <Text style={cardStyles.closingHeading}>
-            you're in the right place
+            {"you're in the right place"}
           </Text>
           <Text style={cardStyles.closingBody}>
             tens of thousands have started with the same goals, and Wu-Wu helped them get there.
@@ -580,11 +579,11 @@ function PersonalizedCard({
         </Animated.View>
 
         <View style={cardStyles.footer}>
-          <TouchableOpacity onPress={onContinue} activeOpacity={0.75}>
+          <ScalePressable onPress={onContinue}>
             <View style={cardStyles.continueButton}>
               <Text style={cardStyles.continueText}>continue</Text>
             </View>
-          </TouchableOpacity>
+          </ScalePressable>
         </View>
 
       </SafeAreaView>
@@ -607,7 +606,7 @@ export default function Screen7() {
   const [highestSelfSelected, setHighestSelfSelected] = useState<string | null>(null);
   const [affirmationDays, setAffirmationDays] = useState(1);
   const [selfRelationshipSelected, setSelfRelationshipSelected] = useState<string | null>(null);
-  const [blocksSelected, setBlocksSelected] = useState<string[]>([]);
+  const [blocksSelected, setBlocksSelected] = useState<string | null>(null);
   const [showCard, setShowCard] = useState(false);
   const listRef = useRef<FlatList>(null);
 
@@ -648,7 +647,7 @@ export default function Screen7() {
       : activeIndex === 3
       ? selfRelationshipSelected !== null
       : activeIndex === 4
-      ? blocksSelected.length > 0
+      ? blocksSelected !== null
       : true;
 
   useEffect(() => {
@@ -708,7 +707,7 @@ export default function Screen7() {
       listRef.current?.scrollToIndex({ index: 4, animated: true });
       setActiveIndex(4);
     } else {
-      await AsyncStorage.setItem("onboarding_blocks", JSON.stringify(blocksSelected));
+      await AsyncStorage.setItem("onboarding_blocks", blocksSelected!);
       navigateTo("/(onboarding)/screen8");
     }
   };
@@ -794,33 +793,31 @@ export default function Screen7() {
               setSelfRelationshipSelected(v);
             }}
           />
-          <MultiOptions
-            slide={slides[4] as MultiSlide}
+          <SingleOptions
+            slide={slides[4] as SingleSlide}
             isSlideCurrent={activeIndex === 4}
             revealContent={titleDone}
             selected={blocksSelected}
-            onToggle={(v) => {
+            onSelect={(v) => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setBlocksSelected((prev) =>
-                prev.includes(v) ? prev.filter((p) => p !== v) : [...prev, v]
-              );
+              setBlocksSelected(v);
             }}
           />
         </View>
 
         {/* ── bottom: continue button ── */}
         <View style={styles.footer}>
-          <TouchableOpacity
+          <ScalePressable
             onPress={handleContinue}
-            activeOpacity={canContinue ? 0.75 : 1}
             disabled={!canContinue}
+            scaleTo={0.96}
           >
             <Animated.View style={[styles.continueButton, { backgroundColor: buttonBg }]}>
               <Animated.Text style={[styles.continueText, { color: buttonTextColor }]}>
                 continue
               </Animated.Text>
             </Animated.View>
-          </TouchableOpacity>
+          </ScalePressable>
         </View>
 
       </SafeAreaView>
@@ -930,6 +927,9 @@ const styles = StyleSheet.create({
   optionSelected: {
     borderColor: "#fff",
     backgroundColor: "rgba(255,255,255,0.07)",
+  },
+  optionPressed: {
+    backgroundColor: "rgba(0,0,0,0.22)",
   },
   optionText: {
     fontSize: isSmallDevice ? 13 : 14,

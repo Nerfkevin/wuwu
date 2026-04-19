@@ -145,7 +145,7 @@ const dotStyles = StyleSheet.create({
   },
   fill: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#A78BFA",
+    backgroundColor: "#22c55e",
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
@@ -250,7 +250,7 @@ export default function Screen14() {
           next[i] = true;
           return next;
         });
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       }, dotElapsed + dur - 650);
       dotElapsed += dur;
     });

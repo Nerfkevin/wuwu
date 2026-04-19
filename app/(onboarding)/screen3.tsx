@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
-  TouchableOpacity,
   TextInput,
   KeyboardAvoidingView,
   Platform,
@@ -19,6 +18,7 @@ import * as SecureStore from "expo-secure-store";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
 import { usePostHog, usePostHogScreenViewed } from "@/lib/posthog";
+import { ScalePressable } from "@/components/ScalePressable";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -227,10 +227,10 @@ export default function Screen3() {
               style={[styles.footer, { opacity: fadeFooter }]}
               pointerEvents={typewriterDone ? "auto" : "none"}
             >
-              <TouchableOpacity
+              <ScalePressable
                 onPress={handleContinue}
-                activeOpacity={name.trim() ? 0.75 : 1}
                 disabled={!name.trim()}
+                scaleTo={0.96}
               >
                 <Animated.View
                   style={[styles.continueButton, { backgroundColor: buttonBg }]}
@@ -241,7 +241,7 @@ export default function Screen3() {
                     continue
                   </Animated.Text>
                 </Animated.View>
-              </TouchableOpacity>
+              </ScalePressable>
             </Animated.View>
           </SafeAreaView>
         </KeyboardAvoidingView>

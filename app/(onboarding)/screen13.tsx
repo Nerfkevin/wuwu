@@ -169,10 +169,12 @@ const shuffleArr = <T,>(arr: T[]): T[] => [...arr].sort(() => Math.random() - 0.
 function FrequencyCard({
   item,
   isSelected,
+  isGreyed,
   onSelect,
 }: {
   item: (typeof FREQUENCIES)[0];
   isSelected: boolean;
+  isGreyed?: boolean;
   onSelect: () => void;
 }) {
   const [glowState, setGlowState] = useState<GlowEvent>("default");
@@ -187,7 +189,7 @@ function FrequencyCard({
     Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 6 }).start();
   };
   return (
-    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+    <Animated.View style={[{ transform: [{ scale: scaleAnim }] }, isGreyed && { opacity: 0.35 }]}>
       <AnimatedGlow
         preset={GlowPresets.vaporwave(FREQ_ITEM_RADIUS, item.color)}
         activeState={glowState}
@@ -213,10 +215,12 @@ function FrequencyCard({
 function BrainwaveCard({
   item,
   isSelected,
+  isGreyed,
   onSelect,
 }: {
   item: (typeof BRAINWAVES)[0];
   isSelected: boolean;
+  isGreyed?: boolean;
   onSelect: () => void;
 }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -227,7 +231,7 @@ function BrainwaveCard({
     Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 6 }).start();
   };
   return (
-    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+    <Animated.View style={[{ transform: [{ scale: scaleAnim }] }, isGreyed && { opacity: 0.35 }]}>
       <AnimatedGlow
         preset={GlowPresets.vaporwave(FREQ_ITEM_RADIUS, item.color)}
         activeState={isSelected ? "press" : "default"}
@@ -283,13 +287,13 @@ function BgButton({
 
 // ─── pillar card (slide 0) ────────────────────────────────────────────────────
 
-function PillarCard({ item, isSelected, onSelect }: {
-  item: PillarItem; isSelected: boolean; onSelect: () => void;
+function PillarCard({ item, isSelected, isDisabled, onSelect }: {
+  item: PillarItem; isSelected: boolean; isDisabled?: boolean; onSelect: () => void;
 }) {
   const [glowState, setGlowState] = useState<GlowEvent>("default");
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const iconColor = isSelected ? item.color : "rgba(255,255,255,0.4)";
-  const titleColor = isSelected ? item.color : "rgba(255,255,255,0.62)";
+  const iconColor = isSelected ? item.color : isDisabled ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.4)";
+  const titleColor = isSelected ? item.color : isDisabled ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.62)";
 
   const handlePressIn = () => {
     setGlowState("press");
@@ -301,13 +305,13 @@ function PillarCard({ item, isSelected, onSelect }: {
   };
 
   return (
-    <View style={styles.cardWrapper}>
+    <View style={[styles.cardWrapper, isDisabled && { opacity: 0.38 }]}>
       <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
         <AnimatedGlow preset={GlowPresets.ripple(24, item.color, 0.35)} activeState={isSelected ? "hover" : glowState}>
           <Pressable
             style={[
               styles.card,
-              { borderColor: isSelected ? item.color : "rgba(255,255,255,0.14)" },
+              { borderColor: isSelected ? item.color : isDisabled ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.14)" },
             ]}
             onPress={onSelect}
             onPressIn={handlePressIn}
@@ -360,6 +364,7 @@ export default function Screen13() {
   const [playingId, setPlayingId]                         = useState<string | null>(null);
   const playerRef      = useRef<AudioPlayer | null>(null);
   const statusTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoAdvancedRef = useRef(false);
 
   // ── animation refs ──
   const dotAnims = useRef(
@@ -371,6 +376,7 @@ export default function Screen13() {
   const fadeRec      = useRef(new Animated.Value(0)).current;
   const fadeFreq     = useRef(new Animated.Value(0)).current;
   const fadeContinue = useRef(new Animated.Value(0)).current;
+  const btnScale = useRef(new Animated.Value(1)).current;
   const recordIconPulse = useRef(new Animated.Value(0)).current;
   const recordIconGlow  = useRef(new Animated.Value(0)).current;
   const titleTypingTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -569,6 +575,21 @@ export default function Screen13() {
       }
     }, [refreshTracks])
   );
+
+  // auto-advance to frequency slide once all recordings are done
+  useEffect(() => {
+    if (activeIndex !== 4) {
+      autoAdvancedRef.current = false;
+      return;
+    }
+    if (autoAdvancedRef.current) return;
+    const allRecorded = recordingItems.length > 0 && recordingItems.every((i) => i.recorded);
+    if (!allRecorded) return;
+
+    autoAdvancedRef.current = true;
+    const t = setTimeout(() => goToFrequencySlide(), 420);
+    return () => clearTimeout(t);
+  }, [recordingItems, activeIndex]);
 
   // ── canContinue ──
 
@@ -864,6 +885,7 @@ export default function Screen13() {
                   <PillarCard
                     item={item}
                     isSelected={isSel}
+                    isDisabled={atMax}
                     onSelect={() => { if (!atMax) handleTogglePillar(item.value); }}
                   />
                 );
@@ -1077,6 +1099,7 @@ export default function Screen13() {
                           key={item.id}
                           item={item}
                           isSelected={selectedBrainwave === item.id}
+                          isGreyed={selectedBrainwave !== item.id}
                           onSelect={() => { Haptics.selectionAsync(); setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
                         />
                       ))}
@@ -1087,6 +1110,7 @@ export default function Screen13() {
                           key={item.id}
                           item={item}
                           isSelected={selectedBrainwave === item.id}
+                          isGreyed={selectedBrainwave !== item.id}
                           onSelect={() => { Haptics.selectionAsync(); setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
                         />
                       ))}
@@ -1101,6 +1125,7 @@ export default function Screen13() {
                         <FrequencyCard
                           item={item}
                           isSelected={activeFreq === item.id}
+                          isGreyed={activeFreq !== item.id}
                           onSelect={() => { Haptics.selectionAsync(); setter(item.id); previewFrequency(item.id, selectedBg); }}
                         />
                       );
@@ -1125,11 +1150,19 @@ export default function Screen13() {
 
         {/* ── footer ── */}
         <View style={styles.footer}>
-          <TouchableOpacity onPress={handleContinue} activeOpacity={canContinue ? 0.75 : 1} disabled={!canContinue}>
-            <Animated.View style={[styles.continueButton, { backgroundColor: buttonBg }]}>
-              <Animated.Text style={[styles.continueText, { color: buttonTextColor }]}>continue</Animated.Text>
-            </Animated.View>
-          </TouchableOpacity>
+          <Animated.View style={{ transform: [{ scale: btnScale }] }}>
+            <TouchableOpacity
+              onPress={handleContinue}
+              activeOpacity={canContinue ? 0.75 : 1}
+              disabled={!canContinue}
+              onPressIn={() => Animated.spring(btnScale, { toValue: 0.96, useNativeDriver: true, speed: 60, bounciness: 0 }).start()}
+              onPressOut={() => Animated.spring(btnScale, { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 6 }).start()}
+            >
+              <Animated.View style={[styles.continueButton, { backgroundColor: buttonBg }]}>
+                <Animated.Text style={[styles.continueText, { color: buttonTextColor }]}>continue</Animated.Text>
+              </Animated.View>
+            </TouchableOpacity>
+          </Animated.View>
         </View>
 
       </SafeAreaView>

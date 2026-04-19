@@ -7,15 +7,11 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   TouchableWithoutFeedback,
   Keyboard,
   Animated,
   Dimensions,
 } from 'react-native';
-
-const { width: screenWidth } = Dimensions.get('window');
-const isSmallDevice = screenWidth < 380;
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
@@ -24,6 +20,10 @@ import { GlowPresets } from '@/constants/glow';
 import { Ionicons } from '@expo/vector-icons';
 import AffirmationCard from './components/affirmation-card';
 import { usePostHogScreenViewed } from '@/lib/posthog';
+import { ScalePressable } from '@/components/ScalePressable';
+
+const { width: screenWidth } = Dimensions.get('window');
+const isSmallDevice = screenWidth < 380;
 
 export default function WriteScreen() {
   usePostHogScreenViewed({
@@ -102,17 +102,21 @@ export default function WriteScreen() {
             ]}
           >
             <AnimatedGlow preset={GlowPresets.chakra(28)} activeState={glowState}>
-              <Pressable
+              <ScalePressable
                 style={styles.recordButton}
                 onPress={handleNext}
-                onPressIn={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setGlowState('press'); }}
+                onPressIn={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setGlowState('press');
+                }}
                 onPressOut={() => setGlowState('default')}
+                scaleTo={0.88}
               >
                 <View style={styles.buttonContent}>
                   <Ionicons name="mic" size={22} color="#000000" />
                   <Text style={styles.buttonText}>record</Text>
                 </View>
-              </Pressable>
+              </ScalePressable>
             </AnimatedGlow>
           </Animated.View>
         </Animated.View>

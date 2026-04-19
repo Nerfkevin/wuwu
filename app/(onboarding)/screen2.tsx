@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
-  TouchableOpacity,
   FlatList,
   Image,
   NativeSyntheticEvent,
@@ -17,6 +16,7 @@ import * as Haptics from "expo-haptics";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
 import { usePostHogScreenViewed } from "@/lib/posthog";
+import { ScalePressable } from "@/components/ScalePressable";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -337,13 +337,13 @@ export default function Screen2() {
 
         {/* Arrow */}
         <View style={styles.footer}>
-          <TouchableOpacity
+          <ScalePressable
             style={[styles.arrowButton, !typingDone && styles.arrowButtonDisabled]}
             onPress={typingDone ? handleArrow : undefined}
-            activeOpacity={0.75}
+            disabled={!typingDone}
           >
             <Text style={styles.arrowText}>→</Text>
-          </TouchableOpacity>
+          </ScalePressable>
         </View>
       </SafeAreaView>
     </Animated.View>

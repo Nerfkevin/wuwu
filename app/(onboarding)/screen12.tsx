@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
-  TouchableOpacity,
   Linking,
 } from "react-native";
 import { MeshGradientView } from "expo-mesh-gradient";
@@ -16,6 +15,7 @@ import { requestRecordingPermissionsAsync } from "expo-audio";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
 import { usePostHogScreenViewed } from "@/lib/posthog";
+import { ScalePressable } from "@/components/ScalePressable";
 import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 
 const { width, height } = Dimensions.get("window");
@@ -290,23 +290,22 @@ export default function Screen12() {
         {permState === "denied" ? (
           <Animated.View style={[styles.footer, { opacity: fadeDeniedBelow }]}>
             <View style={styles.deniedActions}>
-              <TouchableOpacity onPress={handleOpenSettings} activeOpacity={0.85} style={styles.settingsBtn}>
+              <ScalePressable onPress={handleOpenSettings} style={styles.settingsBtn}>
                 <Text style={styles.settingsBtnText}>open settings</Text>
-              </TouchableOpacity>
+              </ScalePressable>
             </View>
           </Animated.View>
         ) : (
           <Animated.View style={[styles.footer, { opacity: fadeBtn }]}>
-            <TouchableOpacity
+            <ScalePressable
               onPress={handleUnlock}
-              activeOpacity={0.85}
               style={styles.ctaBtn}
               disabled={permState === "granted"}
             >
               <Text style={styles.ctaText}>
                 {permState === "granted" ? "unlocked ✓" : "unlock your voice"}
               </Text>
-            </TouchableOpacity>
+            </ScalePressable>
           </Animated.View>
         )}
       </SafeAreaView>

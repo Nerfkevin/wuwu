@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
-  TouchableOpacity,
 } from 'react-native';
 import { MeshGradientView } from 'expo-mesh-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,6 +15,7 @@ import Svg, { Path as SvgPath } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { Fonts } from '@/constants/theme';
 import { usePostHogScreenViewed } from '@/lib/posthog';
+import { ScalePressable } from '@/components/ScalePressable';
 
 const { width } = Dimensions.get('window');
 const isSmallDevice = width < 380;
@@ -179,9 +179,9 @@ export default function StreakScreen() {
       <SafeAreaView style={styles.safe} edges={['bottom']}>
         {/* close button — manual top inset + extra gap so it clears notch / status bar */}
         <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
-          <TouchableOpacity style={styles.closeBtn} onPress={handleDismiss}>
+          <ScalePressable style={styles.closeBtn} onPress={handleDismiss}>
             <Text style={styles.closeIcon}>✕</Text>
-          </TouchableOpacity>
+          </ScalePressable>
         </View>
 
           <View style={styles.content}>

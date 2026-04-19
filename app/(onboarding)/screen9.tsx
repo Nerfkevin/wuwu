@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
-  TouchableOpacity,
   Easing,
 } from "react-native";
 import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
@@ -15,6 +14,7 @@ import * as Haptics from "expo-haptics";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
 import { usePostHogScreenViewed } from "@/lib/posthog";
+import { ScalePressable } from "@/components/ScalePressable";
 
 const TYPEWRITER_MS = 33;
 const LETTER_FADE_MS = 480;
@@ -269,7 +269,7 @@ export default function Screen9() {
                 value={72}
                 label="Your Score"
                 color="#FF3B30"
-                gradient={["#FF2800", "#FF5500", "#FF8C00"]}
+                gradient={["#7F0000", "#CC0000", "#FF2800"]}
                 valueLabel="43%"
                 valueColor="#fff"
                 delay={200}
@@ -278,9 +278,10 @@ export default function Screen9() {
               <AnimatedBar
                 value={30}
                 label="Average"
-                color="rgba(255,255,255,0.85)"
+                color="#E879F9"
+                gradient={["#7C3AED", "#C026D3", "#E879F9"]}
                 valueLabel="18%"
-                valueColor="#111"
+                valueColor="#fff"
                 delay={400}
                 shouldStart={startCharts}
               />
@@ -295,13 +296,12 @@ export default function Screen9() {
 
         {/* Footer */}
         <Animated.View style={[styles.footer, { opacity: fadeBtn }]}>
-          <TouchableOpacity
+          <ScalePressable
             style={styles.btn}
             onPress={handleContinue}
-            activeOpacity={0.85}
           >
             <Text style={styles.btnText}>Continue</Text>
-          </TouchableOpacity>
+          </ScalePressable>
         </Animated.View>
       </SafeAreaView>
     </Animated.View>

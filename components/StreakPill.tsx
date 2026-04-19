@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
+import { ScalePressable } from '@/components/ScalePressable';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as Haptics from 'expo-haptics';
@@ -33,9 +34,9 @@ export default function StreakPill() {
   };
 
   return (
-    <Pressable style={styles.pill} onPress={handlePress}>
+    <ScalePressable style={styles.pill} onPress={handlePress}>
       <Text style={styles.text}>🔥 {streak} day streak</Text>
-    </Pressable>
+    </ScalePressable>
   );
 }
 

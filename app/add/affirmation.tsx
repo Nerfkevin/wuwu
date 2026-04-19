@@ -1,9 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import * as Haptics from 'expo-haptics';
-import { StyleSheet, Text, View, FlatList, TouchableOpacity, Dimensions } from 'react-native';
-
-const { width: screenWidth } = Dimensions.get('window');
-const isSmallDevice = screenWidth < 380;
+import { StyleSheet, Text, View, FlatList, Dimensions } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { MeshGradientView } from 'expo-mesh-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,6 +9,10 @@ import { AFFIRMATION_PILLARS, PillarKey } from '@/constants/affirmations';
 import AnimatedGlow from '@/lib/animated-glow';
 import { GlowPresets } from '@/constants/glow';
 import { usePostHogScreenViewed } from '@/lib/posthog';
+import { ScalePressable } from '@/components/ScalePressable';
+
+const { width: screenWidth } = Dimensions.get('window');
+const isSmallDevice = screenWidth < 380;
 
 const normalizeParam = (value?: string | string[]) =>
   Array.isArray(value) ? value[0] : value;
@@ -76,9 +77,9 @@ export default function AffirmationScreen() {
       />
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }} style={styles.backButton}>
+        <ScalePressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }} style={styles.backButton}>
           <Ionicons name="chevron-back" size={24} color={Colors.text} />
-        </TouchableOpacity>
+        </ScalePressable>
       </View>
 
       <View style={styles.content}>
@@ -103,13 +104,12 @@ export default function AffirmationScreen() {
           renderItem={({ item }) => {
             const isSelected = item === selectedMessage;
             return (
-              <TouchableOpacity
+              <ScalePressable
                 style={[styles.messageCard, isSelected && styles.messageCardSelected]}
                 onPress={() => { Haptics.selectionAsync(); setSelectedMessage(item); }}
-                activeOpacity={0.75}
               >
                 <Text style={[styles.messageText, isSelected && styles.messageTextSelected]}>{item}</Text>
-              </TouchableOpacity>
+              </ScalePressable>
             );
           }}
           contentContainerStyle={styles.messageList}
@@ -118,7 +118,7 @@ export default function AffirmationScreen() {
       </View>
 
       <View style={styles.footer}>
-        <TouchableOpacity
+        <ScalePressable
           style={[styles.mainButton, !isContinueEnabled && styles.mainButtonDisabled]}
           disabled={!isContinueEnabled}
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleContinue(); }}
@@ -126,7 +126,7 @@ export default function AffirmationScreen() {
           <View style={styles.buttonContent}>
             <Text style={styles.buttonText}>continue</Text>
           </View>
-        </TouchableOpacity>
+        </ScalePressable>
       </View>
     </View>
   );

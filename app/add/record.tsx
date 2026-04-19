@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -14,6 +14,7 @@ import Animated, {
 import { Colors, Fonts, Layout } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { usePostHogScreenViewed } from '@/lib/posthog';
+import { ScalePressable } from '@/components/ScalePressable';
 
 export default function RecordScreen() {
   usePostHogScreenViewed({
@@ -97,28 +98,29 @@ export default function RecordScreen() {
             />
           </Animated.View>
           
-          <TouchableOpacity 
+          <ScalePressable
             style={styles.recordBtn}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); handleRecordToggle(); }}
+            scaleTo={0.9}
           >
              <Ionicons name={isRecording ? "stop" : "mic"} size={40} color={Colors.text} />
-          </TouchableOpacity>
+          </ScalePressable>
           <Text style={styles.hintText}>{isRecording ? "Recording..." : "Tap to Record"}</Text>
         </View>
       ) : (
         <View style={styles.playbackContainer}>
           <View style={styles.controlsRow}>
-            <TouchableOpacity onPress={() => setIsPlaying(!isPlaying)}>
+            <ScalePressable onPress={() => setIsPlaying(!isPlaying)} scaleTo={0.94}>
               <Ionicons name={isPlaying ? "pause-circle" : "play-circle"} size={64} color={Colors.chakra.blue} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setHasRecorded(false)} style={styles.retakeBtn}>
+            </ScalePressable>
+            <ScalePressable onPress={() => setHasRecorded(false)} style={styles.retakeBtn}>
               <Text style={styles.retakeText}>Retake</Text>
-            </TouchableOpacity>
+            </ScalePressable>
           </View>
 
           <View style={styles.effectsRow}>
             {['Enhance', 'Echo', 'Reverb'].map((effect) => (
-              <TouchableOpacity
+              <ScalePressable
                 key={effect}
                 style={[
                   styles.effectBtn,
@@ -130,16 +132,16 @@ export default function RecordScreen() {
                   styles.effectText,
                   effects[effect.toLowerCase() as keyof typeof effects] && styles.effectTextActive
                 ]}>{effect}</Text>
-              </TouchableOpacity>
+              </ScalePressable>
             ))}
           </View>
 
           <View style={styles.actionRow}>
-            <TouchableOpacity style={styles.deleteBtn} onPress={() => router.back()}>
+            <ScalePressable style={styles.deleteBtn} onPress={() => router.back()}>
               <Ionicons name="trash-outline" size={24} color={Colors.textSecondary} />
-            </TouchableOpacity>
+            </ScalePressable>
             
-            <TouchableOpacity style={styles.saveBtn} onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); handleSave(); }}>
+            <ScalePressable style={styles.saveBtn} onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); handleSave(); }}>
               <LinearGradient
                 colors={Colors.chakra.gradient}
                 style={styles.saveGradient}
@@ -148,7 +150,7 @@ export default function RecordScreen() {
               >
                 <Text style={styles.saveText}>Save to Library</Text>
               </LinearGradient>
-            </TouchableOpacity>
+            </ScalePressable>
           </View>
         </View>
       )}

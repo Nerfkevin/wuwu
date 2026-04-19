@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
-  TouchableOpacity,
 } from "react-native";
 import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -15,6 +14,7 @@ import * as SecureStore from "expo-secure-store";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
 import { usePostHogScreenViewed } from "@/lib/posthog";
+import { ScalePressable } from "@/components/ScalePressable";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -212,13 +212,12 @@ export default function Screen4() {
         </View>
 
         <Animated.View style={[styles.footer, { opacity: fadeBtn }]}>
-          <TouchableOpacity
+          <ScalePressable
             style={styles.arrowButton}
             onPress={handleContinue}
-            activeOpacity={0.75}
           >
-            <Text style={styles.arrowText}>let's start →</Text>
-          </TouchableOpacity>
+            <Text style={styles.arrowText}>{"let's start →"}</Text>
+          </ScalePressable>
         </Animated.View>
       </SafeAreaView>
     </Animated.View>

@@ -6,7 +6,6 @@ import {
   Animated,
   Dimensions,
   TouchableWithoutFeedback,
-  TouchableOpacity,
   Image,
   Linking,
 } from "react-native";
@@ -137,11 +136,6 @@ export default function Screen1() {
     Linking.openURL(url);
   };
 
-  const handleSkip = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigateTo("/(tabs)");
-  };
-
   const orbSize = isSmallDevice || isShortDevice ? 200 : 260;
   const orbMarginBottom = isSmallDevice ? 24 : isShortDevice ? 20 : 32;
   const heyLineHeight = isSmallDevice ? 34 : 44;
@@ -151,9 +145,6 @@ export default function Screen1() {
     <TouchableWithoutFeedback onPress={handleContinue}>
       <Animated.View style={[styles.container, { opacity: contentOpacity }]}>
         <SafeAreaView style={styles.safeArea}>
-          <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
-            <Text style={styles.skipText}>skip</Text>
-          </TouchableOpacity>
           <View style={styles.content}>
             <View style={[styles.stackBlock, { height: stackHeight }]}>
               <Animated.View
@@ -280,18 +271,5 @@ const styles = StyleSheet.create({
   linkText: {
     textDecorationLine: "underline",
     color: "rgba(255,255,255,0.5)",
-  },
-  skipButton: {
-    position: "absolute",
-    top: 0,
-    right: isSmallDevice ? 16 : 20,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    marginTop: 50,
-  },
-  skipText: {
-    fontSize: isSmallDevice ? 13 : 14,
-    color: "rgba(255,255,255,0.4)",
-    fontFamily: Fonts.mono,
   },
 });

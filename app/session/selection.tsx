@@ -54,7 +54,7 @@ const BRAINWAVES = [
 
 const BACKGROUNDS = ['Brainwaves', 'Singing Bowl', 'Pure'];
 
-const FrequencyItem = ({ item, isSelected, onSelect }: { item: typeof FREQUENCIES[0], isSelected: boolean, onSelect: () => void }) => {
+const FrequencyItem = ({ item, isSelected, isGreyed, onSelect }: { item: typeof FREQUENCIES[0], isSelected: boolean, isGreyed?: boolean, onSelect: () => void }) => {
   const [glowState, setGlowState] = useState<GlowEvent>('default');
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -70,7 +70,7 @@ const FrequencyItem = ({ item, isSelected, onSelect }: { item: typeof FREQUENCIE
   };
 
   return (
-    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+    <Animated.View style={[{ transform: [{ scale: scaleAnim }] }, isGreyed && { opacity: 0.35 }]}>
       <AnimatedGlow
         preset={GlowPresets.vaporwave(ITEM_RADIUS, item.color)}
         activeState={glowState}
@@ -93,7 +93,7 @@ const FrequencyItem = ({ item, isSelected, onSelect }: { item: typeof FREQUENCIE
   );
 };
 
-const BrainwaveCard = ({ item, isSelected, onSelect }: { item: typeof BRAINWAVES[0], isSelected: boolean, onSelect: () => void }) => {
+const BrainwaveCard = ({ item, isSelected, isGreyed, onSelect }: { item: typeof BRAINWAVES[0], isSelected: boolean, isGreyed?: boolean, onSelect: () => void }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const handlePressIn = () => {
     Animated.spring(scaleAnim, { toValue: 0.92, useNativeDriver: true, speed: 60, bounciness: 0 }).start();
@@ -102,7 +102,7 @@ const BrainwaveCard = ({ item, isSelected, onSelect }: { item: typeof BRAINWAVES
     Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 6 }).start();
   };
   return (
-    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+    <Animated.View style={[{ transform: [{ scale: scaleAnim }] }, isGreyed && { opacity: 0.35 }]}>
       <AnimatedGlow
         preset={GlowPresets.vaporwave(ITEM_RADIUS, item.color)}
         activeState={isSelected ? 'press' : 'default'}
@@ -126,7 +126,7 @@ const BrainwaveCard = ({ item, isSelected, onSelect }: { item: typeof BRAINWAVES
   );
 };
 
-const BgButton = ({ bg, isSelected, onPress }: { bg: string, isSelected: boolean, onPress: () => void }) => {
+const BgButton = ({ bg, isSelected, onPress }: { bg: string; isSelected: boolean; onPress: () => void }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const handlePressIn = () => {
     Animated.spring(scaleAnim, { toValue: 0.92, useNativeDriver: true, speed: 60, bounciness: 0 }).start();
@@ -166,6 +166,7 @@ export default function SelectionScreen() {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [chosenPlaylistId, setChosenPlaylistId] = useState<string>(ALL_PLAYLIST_ID);
   const { previewFrequency, previewBrainwave, stopPreview, fadeOutPreview } = useFrequencyPreview();
+  const continueBtnScale = useRef(new Animated.Value(1)).current;
 
   const renderFreqItem = ({ item }: { item: typeof FREQUENCIES[0] }) => {
     const setter = selectedBg === 'Singing Bowl' ? setSelectedBowlFreq : setSelectedPureFreq;
@@ -173,6 +174,7 @@ export default function SelectionScreen() {
       <FrequencyItem
         item={item}
         isSelected={activeFreq === item.id}
+        isGreyed={activeFreq !== item.id}
         onSelect={() => { setter(item.id); previewFrequency(item.id, selectedBg); }}
       />
     );
@@ -318,6 +320,7 @@ export default function SelectionScreen() {
                   key={item.id}
                   item={item}
                   isSelected={selectedBrainwave === item.id}
+                  isGreyed={selectedBrainwave !== item.id}
                   onSelect={() => { setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
                 />
               ))}
@@ -328,6 +331,7 @@ export default function SelectionScreen() {
                   key={item.id}
                   item={item}
                   isSelected={selectedBrainwave === item.id}
+                  isGreyed={selectedBrainwave !== item.id}
                   onSelect={() => { setSelectedBrainwave(item.id); previewBrainwave(item.id); }}
                 />
               ))}
@@ -351,14 +355,21 @@ export default function SelectionScreen() {
             *This is a Binaural Frequency, best used with stereo headphones.
           </Text>
         ) : null}
+        </View>
+      </View>
 
-        <TouchableOpacity style={styles.mainButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleContinue(); }}>
+      <Animated.View style={[styles.continueBtnWrapper, { transform: [{ scale: continueBtnScale }] }]}>
+        <TouchableOpacity
+          style={styles.mainButton}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleContinue(); }}
+          onPressIn={() => Animated.spring(continueBtnScale, { toValue: 0.96, useNativeDriver: true, speed: 60, bounciness: 0 }).start()}
+          onPressOut={() => Animated.spring(continueBtnScale, { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 6 }).start()}
+        >
           <View style={styles.buttonContent}>
             <Text style={styles.buttonText}>continue</Text>
           </View>
         </TouchableOpacity>
-        </View>
-      </View>
+      </Animated.View>
 
       <Modal
         visible={showPlaylistModal}
@@ -568,11 +579,15 @@ const styles = StyleSheet.create({
   bgTextSelected: {
     color: Colors.text,
   },
+  continueBtnWrapper: {
+    position: 'absolute',
+    bottom: 40,
+    left: 20,
+    right: 20,
+  },
   mainButton: {
     height: 56,
     borderRadius: 15,
-    marginTop: 'auto',
-    marginBottom: 40,
     backgroundColor: '#FFFFFF',
     overflow: 'hidden',
   },

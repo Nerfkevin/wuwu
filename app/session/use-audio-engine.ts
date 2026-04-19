@@ -71,6 +71,8 @@ export function useAudioEngine({
   const nextTrackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const affirmationVolumeRef = useRef(affirmationPercentToGain(AFFIRMATION_DEFAULT_VOLUME_PERCENT));
+  const hasStartedFirstAffirmationRef = useRef(false);
+  const firstAffirmationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ambientVolumesRef = useRef<Partial<Record<AmbientSoundId, number>>>({});
   const sessionElapsedMsRef = useRef(0);
   const sessionStartedAtRef = useRef<number | null>(null);
@@ -95,6 +97,13 @@ export function useAudioEngine({
     if (nextTrackTimerRef.current) {
       clearTimeout(nextTrackTimerRef.current);
       nextTrackTimerRef.current = null;
+    }
+  }, []);
+
+  const clearFirstAffirmationTimer = useCallback(() => {
+    if (firstAffirmationTimerRef.current) {
+      clearTimeout(firstAffirmationTimerRef.current);
+      firstAffirmationTimerRef.current = null;
     }
   }, []);
 
@@ -507,6 +516,7 @@ export function useAudioEngine({
   const handlePlayToggle = useCallback(async () => {
     if (isPlaying) {
       clearNextTrackTimer();
+      clearFirstAffirmationTimer();
       pauseAudioEngine();
       pauseSessionTimer();
       setIsPlaying(false);
@@ -539,7 +549,19 @@ export function useAudioEngine({
     else if (shouldPlayPure) startPure();
     try {
       if (!affirmationSourceRef.current && recordingsRef.current.length > 0) {
-        await startAffirmationPlayback(currentTrackIndexRef.current);
+        if (!hasStartedFirstAffirmationRef.current) {
+          hasStartedFirstAffirmationRef.current = true;
+          clearFirstAffirmationTimer();
+          firstAffirmationTimerRef.current = setTimeout(() => {
+            firstAffirmationTimerRef.current = null;
+            if (!isPlayingRef.current || affirmationSourceRef.current) return;
+            void startAffirmationPlayback(currentTrackIndexRef.current).catch((e) => {
+              console.warn('[audio-engine] Affirmation playback start failed:', e);
+            });
+          }, 3000);
+        } else {
+          await startAffirmationPlayback(currentTrackIndexRef.current);
+        }
       }
     } catch (e) {
       console.warn('[audio-engine] Affirmation playback start failed:', e);
@@ -552,21 +574,36 @@ export function useAudioEngine({
     startSessionTimer();
     setIsPlaying(true);
   }, [
-    isPlaying, clearNextTrackTimer, pauseAudioEngine, pauseSessionTimer,
+    isPlaying, clearNextTrackTimer, clearFirstAffirmationTimer, pauseAudioEngine, pauseSessionTimer,
     ensureAudioContext, shouldPlaySingingBowl, shouldPlayBrainwave,
     shouldPlayPure, loadBowlBuffer, startBowlPlayback, startBinaural, startPure,
     startAffirmationPlayback, startAmbientSound, startSessionTimer, preloadAmbientBuffers,
     createNoiseBuffer,
   ]);
 
+  const fadeOutAll = useCallback((durationMs: number) => {
+    const ctx = audioCtxRef.current;
+    const master = masterGainRef.current;
+    if (!ctx || !master) return;
+    const now = ctx.currentTime;
+    const seconds = durationMs / 1000;
+    try {
+      master.gain.cancelScheduledValues(now);
+      master.gain.setValueAtTime(master.gain.value, now);
+      master.gain.linearRampToValueAtTime(0, now + seconds);
+    } catch { /* best effort */ }
+  }, []);
+
   const stopSession = useCallback((): number => {
     clearNextTrackTimer();
+    clearFirstAffirmationTimer();
     pauseSessionTimer();
     isPlayingRef.current = false;
+    hasStartedFirstAffirmationRef.current = false;
     setIsPlaying(false);
     closeAudioEngine();
     return sessionElapsedMsRef.current;
-  }, [clearNextTrackTimer, closeAudioEngine, pauseSessionTimer]);
+  }, [clearNextTrackTimer, clearFirstAffirmationTimer, closeAudioEngine, pauseSessionTimer]);
 
   // ─── Effects ──────────────────────────────────────────────────────────────
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
@@ -582,6 +619,27 @@ export function useAudioEngine({
     });
     return () => sub.remove();
   }, [isPlaying]);
+
+  // Load saved affirmation volume on mount
+  useEffect(() => {
+    AsyncStorage.getItem('affirmation_volume').then((raw) => {
+      if (!raw) return;
+      try {
+        const parsed = parseFloat(raw);
+        if (!Number.isNaN(parsed) && parsed >= 1 && parsed <= 100) {
+          const gain = affirmationPercentToGain(parsed);
+          affirmationVolumeRef.current = gain;
+          setVolume(parsed);
+          if (affirmationGainRef.current) affirmationGainRef.current.gain.value = gain;
+        }
+      } catch { /* ignore */ }
+    }).catch(() => {});
+  }, []);
+
+  // Persist affirmation volume whenever it changes
+  useEffect(() => {
+    AsyncStorage.setItem('affirmation_volume', String(volume)).catch(() => {});
+  }, [volume]);
 
   // Load saved ambient pref metadata on mount
   useEffect(() => {
@@ -645,10 +703,11 @@ export function useAudioEngine({
   useEffect(() => {
     return () => {
       clearNextTrackTimer();
+      clearFirstAffirmationTimer();
       clearSessionTimer();
       closeAudioEngine();
     };
-  }, [clearNextTrackTimer, clearSessionTimer, closeAudioEngine]);
+  }, [clearNextTrackTimer, clearFirstAffirmationTimer, clearSessionTimer, closeAudioEngine]);
 
   useEffect(() => {
     bowlBufferRef.current = null;
@@ -669,6 +728,7 @@ export function useAudioEngine({
     sessionElapsedMs,
     handlePlayToggle,
     stopSession,
+    fadeOutAll,
     toggleBowlMute,
     toggleOscMute,
     toggleAmbientSound,

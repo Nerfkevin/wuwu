@@ -7,7 +7,6 @@ import {
   Dimensions,
   ScrollView,
   Image,
-  TouchableOpacity,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -21,6 +20,7 @@ import Superwall, {
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
 import { usePostHog, usePostHogScreenViewed } from "@/lib/posthog";
+import { ScalePressable } from "@/components/ScalePressable";
 
 const ONBOARDING_KEY = "onboarding_completed";
 const SUBSCRIPTION_KEY = "subscription_active";
@@ -203,26 +203,14 @@ export default function Screen21() {
     }
   };
 
-  const handleRestartOnboarding = async () => {
-    await SecureStore.deleteItemAsync(ONBOARDING_KEY);
-    router.replace("/(onboarding)/screen1" as any);
-  };
-
   return (
     <Animated.View style={[styles.container, { opacity: contentOpacity }]}>
       <SafeAreaView style={styles.safeArea}>
         {/* ── Fixed header ── */}
         <Animated.View style={[styles.header, { opacity: headerAnim }]}>
-          <TouchableOpacity
-            onPress={handleRestartOnboarding}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Restart onboarding"
-          >
-            <Text style={styles.title}>
-              Wu-Wu was designed for{"\n"}dreamers like you ❤️
-            </Text>
-          </TouchableOpacity>
+          <Text style={styles.title}>
+            Wu-Wu was designed for{"\n"}dreamers like you ❤️
+          </Text>
           <Text style={styles.subtitle}>reviews from people using Wu-Wu.</Text>
 
           {/* Wreath */}
@@ -272,13 +260,12 @@ export default function Screen21() {
 
         {/* ── Footer button ── */}
         <View style={styles.footer}>
-          <TouchableOpacity
+          <ScalePressable
             onPress={handleJoin}
-            activeOpacity={0.75}
             style={styles.joinButton}
           >
             <Text style={styles.joinText}>join Wu-Wu 🙏</Text>
-          </TouchableOpacity>
+          </ScalePressable>
         </View>
       </SafeAreaView>
     </Animated.View>

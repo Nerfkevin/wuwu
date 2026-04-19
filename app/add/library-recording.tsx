@@ -10,12 +10,8 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
-
-const { width: screenWidth } = Dimensions.get('window');
-const isSmallDevice = screenWidth < 380;
 
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -25,6 +21,7 @@ import { AFFIRMATION_PILLARS } from '@/constants/affirmations';
 import * as Haptics from 'expo-haptics';
 import { Colors, Fonts } from '@/constants/theme';
 import AffirmationCard from './components/affirmation-card';
+import { ScalePressable } from '@/components/ScalePressable';
 import {
   deleteSavedRecording,
   getSavedRecordingById,
@@ -45,6 +42,9 @@ import {
   removeRecordingFromPlaylist,
 } from '@/lib/playlist-store';
 import { usePostHogScreenViewed } from '@/lib/posthog';
+
+const { width: screenWidth } = Dimensions.get('window');
+const isSmallDevice = screenWidth < 380;
 
 export default function LibraryRecordingScreen() {
   usePostHogScreenViewed({
@@ -256,9 +256,9 @@ export default function LibraryRecordingScreen() {
       />
 
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }} style={styles.backButton}>
+        <ScalePressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }} style={styles.backButton}>
           <Ionicons name="chevron-back" size={24} color={Colors.text} />
-        </TouchableOpacity>
+        </ScalePressable>
       </View>
 
       <View style={styles.content}>
@@ -275,22 +275,22 @@ export default function LibraryRecordingScreen() {
             <View style={styles.progressTrack}>
               <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
             </View>
-            <TouchableOpacity style={styles.playButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); handlePlayback(); }}>
+            <ScalePressable style={styles.playButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); handlePlayback(); }}>
               <Ionicons name={isPlaying ? 'pause' : 'play'} size={22} color="#FFFFFF" />
-            </TouchableOpacity>
+            </ScalePressable>
           </View>
 
           <View style={styles.actionsRow}>
-            <TouchableOpacity style={styles.deleteBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleDelete(); }}>
+            <ScalePressable style={styles.deleteBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleDelete(); }}>
               <Ionicons
                 name={isCustomPlaylist ? 'remove-circle-outline' : 'trash-outline'}
                 size={26}
                 color="#FF4D4F"
               />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.addToPlaylistBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); handleOpenAddToPlaylist(); }}>
+            </ScalePressable>
+            <ScalePressable style={styles.addToPlaylistBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); handleOpenAddToPlaylist(); }}>
               <Ionicons name="list-outline" size={26} color={Colors.chakra.violet} />
-            </TouchableOpacity>
+            </ScalePressable>
           </View>
         </View>
       </View>
@@ -334,14 +334,14 @@ export default function LibraryRecordingScreen() {
                   keyExtractor={(item) => item.id}
                   scrollEnabled={false}
                   renderItem={({ item }) => (
-                    <TouchableOpacity
+                    <ScalePressable
                       style={styles.playlistRow}
                       onPress={() => { Haptics.selectionAsync(); handleSelectPlaylist(item); }}
                     >
                       <Ionicons name="musical-notes-outline" size={18} color={Colors.textSecondary} />
                       <Text style={styles.playlistRowText}>{item.name}</Text>
                       <Ionicons name="add" size={18} color={Colors.chakra.violet} />
-                    </TouchableOpacity>
+                    </ScalePressable>
                   )}
                   ItemSeparatorComponent={() => <View style={styles.separator} />}
                 />
@@ -359,7 +359,7 @@ export default function LibraryRecordingScreen() {
                     returnKeyType="done"
                     onSubmitEditing={handleCreateAndAdd}
                   />
-                  <TouchableOpacity
+                  <ScalePressable
                     style={[
                       styles.createConfirmBtn,
                       !newPlaylistName.trim() && styles.createConfirmBtnDisabled,
@@ -368,19 +368,19 @@ export default function LibraryRecordingScreen() {
                     disabled={!newPlaylistName.trim()}
                   >
                     <Ionicons name="checkmark" size={18} color="#000" />
-                  </TouchableOpacity>
+                  </ScalePressable>
                 </View>
               ) : (
-                <TouchableOpacity
+                <ScalePressable
                   style={styles.newPlaylistBtn}
                   onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowCreateInput(true); }}
                 >
                   <Ionicons name="add-circle-outline" size={18} color={Colors.chakra.violet} />
                   <Text style={styles.newPlaylistBtnText}>New Playlist</Text>
-                </TouchableOpacity>
+                </ScalePressable>
               )}
 
-              <TouchableOpacity
+              <ScalePressable
                 style={styles.modalCloseBtn}
                 onPress={() => {
                   setShowPlaylistModal(false);
@@ -389,7 +389,7 @@ export default function LibraryRecordingScreen() {
                 }}
               >
                 <Text style={styles.modalCloseTxt}>Done</Text>
-              </TouchableOpacity>
+              </ScalePressable>
             </Pressable>
           </Pressable>
         </KeyboardAvoidingView>

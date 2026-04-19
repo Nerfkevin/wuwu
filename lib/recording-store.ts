@@ -118,6 +118,17 @@ export const getSavedRecordingById = async (id: string) => {
   return items.find((item) => item.id === id) ?? null;
 };
 
+export const clearAllRecordings = async () => {
+  const items = await readIndex();
+  for (const item of items) {
+    if (item.uri) {
+      const f = new File(normalizeFileUri(item.uri));
+      if (f.exists) f.delete();
+    }
+  }
+  writeIndex([]);
+};
+
 export const deleteSavedRecording = async (id: string) => {
   const items = await readIndex();
   const target = items.find((item) => item.id === id);

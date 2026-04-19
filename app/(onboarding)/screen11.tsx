@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
-  TouchableOpacity,
   TouchableWithoutFeedback,
   Image,
   Modal,
@@ -18,6 +17,7 @@ import * as Haptics from "expo-haptics";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
 import { usePostHogScreenViewed } from "@/lib/posthog";
+import { ScalePressable } from "@/components/ScalePressable";
 import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 
 const TYPEWRITER_MS = 33;
@@ -216,13 +216,12 @@ export default function Screen11() {
 
         {/* Footer CTA */}
         <Animated.View style={[styles.footer, { opacity: fadeBtn }]}>
-          <TouchableOpacity
+          <ScalePressable
             onPress={openModal}
-            activeOpacity={0.8}
             style={styles.ctaRow}
           >
             <Text style={styles.ctaText}>see how Wu-Wu works →</Text>
-          </TouchableOpacity>
+          </ScalePressable>
         </Animated.View>
       </SafeAreaView>
 
@@ -258,7 +257,9 @@ export default function Screen11() {
               resizeMode="cover"
             />
 
-            <Text style={styles.modalTitle}>here's how Wu-Wu works:</Text>
+            <Text style={styles.modalTitle}>
+              {"here's how Wu-Wu works:"}
+            </Text>
 
             {/* Steps */}
             <View style={styles.steps}>
@@ -278,7 +279,7 @@ export default function Screen11() {
             </View>
 
             {/* Get Started */}
-            <TouchableOpacity onPress={handleGetStarted} activeOpacity={0.85} style={{ width: "100%" }}>
+            <ScalePressable onPress={handleGetStarted} style={{ width: "100%" }}>
               <LinearGradient
                 colors={["#9B6DFF", "#5B1FE7"]}
                 start={{ x: 0, y: 0 }}
@@ -287,7 +288,7 @@ export default function Screen11() {
               >
                 <Text style={styles.getStartedText}>Get Started</Text>
               </LinearGradient>
-            </TouchableOpacity>
+            </ScalePressable>
           </Animated.View>
         </View>
       </Modal>

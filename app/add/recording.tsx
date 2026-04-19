@@ -3,7 +3,6 @@ import {
   StyleSheet,
   Text,
   View,
-  TouchableOpacity,
   Animated,
   Easing,
   TextInput,
@@ -13,48 +12,10 @@ import {
   Modal,
   ActivityIndicator,
   Dimensions,
+  TouchableOpacity,
 } from 'react-native';
 
-const { width: screenWidth } = Dimensions.get('window');
-const isSmallDevice = screenWidth < 380;
-
-function ScaleBtn({
-  onPress,
-  onPressIn,
-  onPressOut,
-  disabled,
-  style,
-  children,
-  scaleTo = 0.88,
-}: {
-  onPress?: () => void;
-  onPressIn?: () => void;
-  onPressOut?: () => void;
-  disabled?: boolean;
-  style?: object | object[];
-  children: React.ReactNode;
-  scaleTo?: number;
-}) {
-  const scale = useRef(new Animated.Value(1)).current;
-  const handlePressIn = () => {
-    Animated.spring(scale, { toValue: scaleTo, useNativeDriver: true, speed: 50, bounciness: 0 }).start();
-    onPressIn?.();
-  };
-  const handlePressOut = () => {
-    Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 30, bounciness: 6 }).start();
-    onPressOut?.();
-  };
-  // Pull flex/layout off the style array so it sits on the TouchableOpacity
-  const styleArr = Array.isArray(style) ? style : style ? [style] : [];
-  const flatStyle = StyleSheet.flatten(styleArr) as Record<string, unknown>;
-  const { flex, flexGrow, flexShrink, flexBasis, alignSelf, ...innerStyle } = flatStyle;
-  const outerStyle = { flex, flexGrow, flexShrink, flexBasis, alignSelf } as object;
-  return (
-    <TouchableOpacity onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut} disabled={disabled} activeOpacity={1} style={outerStyle}>
-      <Animated.View style={[innerStyle, { transform: [{ scale }] }]}>{children}</Animated.View>
-    </TouchableOpacity>
-  );
-}
+import { ScalePressable } from '@/components/ScalePressable';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -93,6 +54,9 @@ import {
 } from '@/lib/audio-playback';
 import { usePostHog, usePostHogScreenViewed } from '@/lib/posthog';
 
+const { width: screenWidth } = Dimensions.get('window');
+const isSmallDevice = screenWidth < 380;
+
 const recordColor = '#FF0000';
 const TRIM_MIN_GAP_SECONDS = 0.35;
 const TRIM_EPSILON = 0.0001;
@@ -102,6 +66,43 @@ const normalizeParam = (value?: string | string[]) =>
   Array.isArray(value) ? value[0] : value;
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+function ScaleBtn({
+  onPress,
+  onPressIn,
+  onPressOut,
+  disabled,
+  style,
+  children,
+  scaleTo = 0.88,
+}: {
+  onPress?: () => void;
+  onPressIn?: () => void;
+  onPressOut?: () => void;
+  disabled?: boolean;
+  style?: object | object[];
+  children: React.ReactNode;
+  scaleTo?: number;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const handlePressIn = () => {
+    Animated.spring(scale, { toValue: scaleTo, useNativeDriver: true, speed: 50, bounciness: 0 }).start();
+    onPressIn?.();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 30, bounciness: 6 }).start();
+    onPressOut?.();
+  };
+  const styleArr = Array.isArray(style) ? style : style ? [style] : [];
+  const flatStyle = StyleSheet.flatten(styleArr) as Record<string, unknown>;
+  const { flex, flexGrow, flexShrink, flexBasis, alignSelf, ...innerStyle } = flatStyle;
+  const outerStyle = { flex, flexGrow, flexShrink, flexBasis, alignSelf } as object;
+  return (
+    <TouchableOpacity onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut} disabled={disabled} activeOpacity={1} style={outerStyle}>
+      <Animated.View style={[innerStyle, { transform: [{ scale }] }]}>{children}</Animated.View>
+    </TouchableOpacity>
+  );
+}
 
 type RecordingScreenProps = { reviewMode?: boolean };
 
@@ -888,14 +889,14 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
         style={StyleSheet.absoluteFill}
       />
 
-      <TouchableOpacity onPress={handleDismiss} activeOpacity={0.6} style={styles.dragHandle}>
+      <ScalePressable onPress={handleDismiss} style={styles.dragHandle} scaleTo={0.96}>
         <View style={styles.dragPill} />
-      </TouchableOpacity>
+      </ScalePressable>
 
       <View style={styles.header}>
-        <TouchableOpacity onPress={handleDismiss} style={styles.backButton}>
+        <ScalePressable onPress={handleDismiss} style={styles.backButton}>
           <Ionicons name="chevron-back" size={24} color={Colors.text} />
-        </TouchableOpacity>
+        </ScalePressable>
       </View>
 
       <View style={styles.content}>
@@ -926,13 +927,13 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
               { opacity: composeOpacity, transform: [{ translateY: composeTranslate }] },
             ]}
           >
-            <TouchableOpacity
+            <ScalePressable
               style={[styles.doneBtn, draftMessage.trim().length === 0 && styles.doneBtnDisabled]}
               disabled={draftMessage.trim().length === 0}
               onPress={handleDoneComposing}
             >
               <Text style={styles.doneText}>done</Text>
-            </TouchableOpacity>
+            </ScalePressable>
           </Animated.View>
 
           <Animated.View
@@ -1016,7 +1017,7 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
 
             <View style={styles.reviewBottom}>
               <View style={styles.effectsRow}>
-                <ScaleBtn
+                <ScalePressable
                   style={[styles.effectBtn, effects.enhance && styles.effectBtnEnhanceActive]}
                   onPress={() => toggleEffect('enhance')}
                 >
@@ -1027,8 +1028,8 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
                     color={effects.enhance ? '#CDB6FF' : 'rgba(255,255,255,0.28)'}
                   />
                   <Text style={[styles.effectText, effects.enhance && styles.effectTextEnhanceActive]}>Enhance</Text>
-                </ScaleBtn>
-                <ScaleBtn
+                </ScalePressable>
+                <ScalePressable
                   style={[styles.effectBtn, effects.echo && styles.effectBtnEchoActive]}
                   onPress={() => toggleEffect('echo')}
                 >
@@ -1039,8 +1040,8 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
                     color={effects.echo ? '#A9D7FF' : 'rgba(255,255,255,0.28)'}
                   />
                   <Text style={[styles.effectText, effects.echo && styles.effectTextEchoActive]}>Echo</Text>
-                </ScaleBtn>
-                <ScaleBtn
+                </ScalePressable>
+                <ScalePressable
                   style={[styles.effectBtn, effects.reverb && styles.effectBtnReverbActive]}
                   onPress={() => toggleEffect('reverb')}
                 >
@@ -1051,16 +1052,16 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
                     color={effects.reverb ? '#FFB39F' : 'rgba(255,255,255,0.28)'}
                   />
                   <Text style={[styles.effectText, effects.reverb && styles.effectTextReverbActive]}>Reverb</Text>
-                </ScaleBtn>
+                </ScalePressable>
               </View>
 
               <View style={styles.actionsRow}>
                 <ScaleBtn style={styles.deleteBtn} onPress={handleDelete} scaleTo={0.82}>
                   <Ionicons name="trash-outline" size={26} color="#FF3B30" />
                 </ScaleBtn>
-                <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
+                <ScalePressable style={styles.saveBtn} onPress={handleSave} scaleTo={0.96}>
                   <Text style={styles.saveText}>{isApplyingEnhance ? 'Applying...' : 'Save'}</Text>
-                </TouchableOpacity>
+                </ScalePressable>
               </View>
             </View>
           </Animated.View>

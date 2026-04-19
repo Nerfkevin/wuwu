@@ -1,4 +1,8 @@
+import type { AudioPlayer } from 'expo-audio';
+
 const ExpoAudio = require('expo-audio') as any;
+
+export type { AudioPlayer };
 
 export type PermissionResponseLike = {
   status?: string;
@@ -12,39 +16,6 @@ export type AudioModeLike = {
   shouldRouteThroughEarpiece?: boolean;
   interruptionMode?: 'mixWithOthers' | 'doNotMix' | 'duckOthers';
   allowsBackgroundRecording?: boolean;
-};
-
-export type AudioPlayer = {
-  id?: number;
-  playing: boolean;
-  muted?: boolean;
-  loop?: boolean;
-  paused?: boolean;
-  isLoaded?: boolean;
-  isAudioSamplingSupported?: boolean;
-  isBuffering?: boolean;
-  currentTime: number;
-  duration: number;
-  volume?: number;
-  playbackRate?: number;
-  shouldCorrectPitch?: boolean;
-  currentStatus?: any;
-  play(): void;
-  pause(): void;
-  stop(): void;
-  remove(): void;
-  replace?(source: any): void;
-  seekTo(
-    seconds: number,
-    toleranceMillisBefore?: number,
-    toleranceMillisAfter?: number
-  ): Promise<void>;
-  setPlaybackRate?(rate: number, pitchCorrectionQuality?: any): void;
-  setAudioSamplingEnabled?(enabled: boolean): void;
-  setActiveForLockScreen?(active: boolean, metadata?: any, options?: any): void;
-  updateLockScreenMetadata?(metadata: any): void;
-  clearLockScreenControls?(): void;
-  addListener?(eventName: string, cb: (...args: any[]) => void): { remove(): void };
 };
 
 export type RecordingInput = {

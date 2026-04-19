@@ -8,13 +8,9 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
   Dimensions,
 } from 'react-native';
-
-const { width: screenWidth } = Dimensions.get('window');
-const isSmallDevice = screenWidth < 380;
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
@@ -43,9 +39,10 @@ import {
   reorderPlaylistRecordings,
 } from '@/lib/playlist-store';
 import { usePostHog, usePostHogScreenViewed } from '@/lib/posthog';
+import { ScalePressable } from '@/components/ScalePressable';
 
-const springPressIn = { toValue: 0.92 as const, useNativeDriver: true as const, speed: 60, bounciness: 0 };
-const springPressOut = { toValue: 1 as const, useNativeDriver: true as const, speed: 40, bounciness: 6 };
+const { width: screenWidth } = Dimensions.get('window');
+const isSmallDevice = screenWidth < 380;
 
 function PlaylistChip({
   isActive,
@@ -60,47 +57,58 @@ function PlaylistChip({
   delayLongPress?: number;
   children: React.ReactNode;
 }) {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const handlePressIn = () => {
-    Animated.spring(scaleAnim, springPressIn).start();
-  };
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, springPressOut).start();
-  };
   return (
-    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-      <Pressable
-        style={[styles.playlistChip, isActive && styles.playlistChipActive]}
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        onLongPress={onLongPress}
-        delayLongPress={onLongPress ? (delayLongPress ?? 500) : undefined}
-      >
-        {children}
-      </Pressable>
-    </Animated.View>
+    <ScalePressable
+      scaleTo={0.92}
+      style={[styles.playlistChip, isActive && styles.playlistChipActive]}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={onLongPress ? (delayLongPress ?? 500) : undefined}
+    >
+      {children}
+    </ScalePressable>
   );
 }
 
 function PlaylistAddButton({ onPress }: { onPress: () => void }) {
+  return (
+    <ScalePressable scaleTo={0.92} style={styles.playlistAddBtn} onPress={onPress}>
+      <Ionicons name="add" size={14} color={Colors.textSecondary} />
+      <Text style={styles.playlistAddText}>Playlist</Text>
+    </ScalePressable>
+  );
+}
+
+function RecordingCardPressable({
+  item,
+  selectedPlaylistId,
+  children,
+}: {
+  item: SavedRecording;
+  selectedPlaylistId: string;
+  children: React.ReactNode;
+}) {
+  const router = useRouter();
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const handlePressIn = () => {
-    Animated.spring(scaleAnim, springPressIn).start();
-  };
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, springPressOut).start();
-  };
   return (
     <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
       <Pressable
-        style={styles.playlistAddBtn}
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
+        style={styles.cardInner}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          router.push({
+            pathname: '/add/library-recording',
+            params: { id: item.id, playlistId: selectedPlaylistId },
+          });
+        }}
+        onPressIn={() =>
+          Animated.spring(scaleAnim, { toValue: 0.92, useNativeDriver: true, speed: 60, bounciness: 0 }).start()
+        }
+        onPressOut={() =>
+          Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 6 }).start()
+        }
       >
-        <Ionicons name="add" size={14} color={Colors.textSecondary} />
-        <Text style={styles.playlistAddText}>Playlist</Text>
+        {children}
       </Pressable>
     </Animated.View>
   );
@@ -116,7 +124,7 @@ function DeleteUnderlay({
   const { close } = useSwipeableItemParams<SavedRecording>();
   return (
     <View style={styles.underlayLeft}>
-      <TouchableOpacity
+      <ScalePressable
         style={styles.deleteBtn}
         onPress={() => {
           close();
@@ -125,7 +133,7 @@ function DeleteUnderlay({
       >
         <Ionicons name="trash" size={22} color="#fff" />
         <Text style={styles.deleteBtnText}>Delete</Text>
-      </TouchableOpacity>
+      </ScalePressable>
     </View>
   );
 }
@@ -373,44 +381,45 @@ export default function LibraryScreen() {
                   isHoldActive && styles.cardOuterHold,
                 ]}
               >
-                <Pressable
-                  style={({ pressed }) => [styles.cardInner, pressed && styles.cardInnerPressed]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    router.push({
-                      pathname: '/add/library-recording',
-                      params: { id: item.id, playlistId: selectedPlaylistId },
-                    });
-                  }}
-                >
+                <RecordingCardPressable item={item} selectedPlaylistId={selectedPlaylistId}>
                   <View style={styles.leftMeta}>
-                    <TouchableOpacity
+                    <ScalePressable
                       style={styles.dragHandle}
-                      onPressIn={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPressedHandleId(item.id); }}
+                      onPressIn={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setPressedHandleId(item.id);
+                      }}
                       onPressOut={() =>
                         setPressedHandleId((current) => (current === item.id ? null : current))
                       }
                       onLongPress={drag}
                       disabled={isActive}
                       delayLongPress={140}
+                      scaleTo={0.9}
                     >
                       <Ionicons name="ellipsis-vertical" size={18} color={Colors.textSecondary} />
-                    </TouchableOpacity>
+                    </ScalePressable>
                   </View>
                   <View style={styles.cardTextContainer}>
                     <Text style={styles.cardTitle}>{item.text}</Text>
                     <Text style={styles.cardSubtitle}>{item.pillar}</Text>
                   </View>
                   <View style={styles.cardMeta}>
-                    <TouchableOpacity style={styles.playButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); handlePlay(item); }}>
+                    <ScalePressable
+                      style={styles.playButton}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        handlePlay(item);
+                      }}
+                    >
                       <Ionicons
                         name={playingId === item.id ? 'pause' : 'play'}
                         size={20}
                         color={Colors.text}
                       />
-                    </TouchableOpacity>
+                    </ScalePressable>
                   </View>
-                </Pressable>
+                </RecordingCardPressable>
               </View>
             </AnimatedGlow>
           </ScaleDecorator>
@@ -487,16 +496,19 @@ export default function LibraryScreen() {
             returnKeyType="done"
             onSubmitEditing={handleCreatePlaylist}
           />
-          <TouchableOpacity
+          <ScalePressable
             style={[
               styles.createConfirmBtn,
               !newPlaylistName.trim() && styles.createConfirmBtnDisabled,
             ]}
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleCreatePlaylist(); }}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              handleCreatePlaylist();
+            }}
             disabled={!newPlaylistName.trim()}
           >
             <Ionicons name="checkmark" size={18} color="#000" />
-          </TouchableOpacity>
+          </ScalePressable>
         </View>
       )}
 

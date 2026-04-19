@@ -142,17 +142,17 @@ export default function Screen16() {
       await new Promise<void>((res) =>
         Animated.timing(introOpacity, {
           toValue: 1,
-          duration: 700,
+          duration: 500,
           useNativeDriver: true,
         }).start(() => res())
       );
 
-      await delay(1800);
+      await delay(1000);
 
       await new Promise<void>((res) =>
         Animated.timing(introOpacity, {
           toValue: 0,
-          duration: 600,
+          duration: 400,
           useNativeDriver: true,
         }).start(() => res())
       );
@@ -285,7 +285,7 @@ export default function Screen16() {
 
     return () => {
       cancelAnimationFrame(rafId);
-      try { soundPlayer?.stop(); soundPlayer?.remove(); } catch { /* ignore */ }
+      try { soundPlayer?.pause(); soundPlayer?.remove(); } catch { /* ignore */ }
     };
   }, []);
 

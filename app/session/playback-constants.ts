@@ -58,7 +58,7 @@ export const VISUAL_SOUND_IDS = new Set<AmbientSoundId>(['money']);
 /** Lower gain for the money counting sound so it doesn't overpower other audio. */
 export const MONEY_AMBIENT_GAIN_MULTIPLIER = 0.28;
 
-export const NATURE_SOUNDS: Array<{ id: AmbientSoundId; label: string; asset: number | null }> = [
+export const NATURE_SOUNDS: { id: AmbientSoundId; label: string; asset: number | null }[] = [
   { id: 'rain',     label: 'Rain',          asset: require('../../assets/images/ambient/rain.mp3') },
   { id: 'thunder',  label: 'Thunder',       asset: require('../../assets/images/ambient/thunder.mp3') },
   { id: 'ocean',    label: 'Ocean Waves',   asset: require('../../assets/images/ambient/ocean.mp3') },
@@ -68,7 +68,7 @@ export const NATURE_SOUNDS: Array<{ id: AmbientSoundId; label: string; asset: nu
   { id: 'money',    label: 'Make it Rain',  asset: require('../../assets/images/moneycount.mp3') },
 ];
 
-export const NOISE_SOUNDS: Array<{ id: AmbientSoundId; label: string }> = [
+export const NOISE_SOUNDS: { id: AmbientSoundId; label: string }[] = [
   { id: 'white', label: 'White Noise' },
   { id: 'pink',  label: 'Pink Noise' },
   { id: 'brown', label: 'Brown Noise' },

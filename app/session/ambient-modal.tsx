@@ -1,6 +1,5 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import {
-  Animated as RNAnimated,
   Dimensions,
   Modal,
   Pressable,
@@ -8,8 +7,6 @@ import {
   StyleSheet,
   Text,
   View,
-  type StyleProp,
-  type ViewStyle,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -23,6 +20,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Fonts } from '@/constants/theme';
 import { AmbientSoundId, NATURE_SOUNDS, NOISE_SOUNDS, VISUAL_SOUND_IDS, withAlpha } from './playback-constants';
 import { usePostHog } from '@/lib/posthog';
+import { ScalePressable } from '@/components/ScalePressable';
 
 const NATURE_TILE_UI: Record<
   Exclude<AmbientSoundId, 'white' | 'pink' | 'brown' | 'money'>,
@@ -68,38 +66,6 @@ const SCREEN_H = Dimensions.get('window').height;
 const TILE_W = Math.floor((SCREEN_W - SHEET_H_PAD * 2 - TILE_GAP * 2) / 3);
 const DISMISS_THRESHOLD = 80;
 const DISMISS_VELOCITY = 800;
-
-const springPressIn = { toValue: 0.92, useNativeDriver: true, speed: 60, bounciness: 0 };
-const springPressOut = { toValue: 1, useNativeDriver: true, speed: 40, bounciness: 6 };
-
-function ScalableTile({
-  style,
-  onPress,
-  disabled,
-  children,
-}: {
-  style: StyleProp<ViewStyle>;
-  onPress: () => void;
-  disabled?: boolean;
-  children: React.ReactNode;
-}) {
-  const scaleAnim = useRef(new RNAnimated.Value(1)).current;
-  const handlePressIn = () => { RNAnimated.spring(scaleAnim, springPressIn).start(); };
-  const handlePressOut = () => { RNAnimated.spring(scaleAnim, springPressOut).start(); };
-  return (
-    <RNAnimated.View style={{ transform: [{ scale: scaleAnim }] }}>
-      <Pressable
-        style={style}
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        disabled={disabled}
-      >
-        {children}
-      </Pressable>
-    </RNAnimated.View>
-  );
-}
 
 export default function AmbientModal({
   visible,
@@ -227,8 +193,9 @@ export default function AmbientModal({
                     const ui = NATURE_TILE_UI[s.id as Exclude<AmbientSoundId, 'white' | 'pink' | 'brown' | 'money'>];
                     const iconColor = active ? ui.color : Colors.textSecondary;
                     return (
-                      <ScalableTile
+                      <ScalePressable
                         key={s.id}
+                        scaleTo={0.92}
                         style={[
                           styles.tile,
                           active && { borderColor: ui.color, backgroundColor: withAlpha(ui.color, 0.12) },
@@ -246,7 +213,7 @@ export default function AmbientModal({
                             {s.label}
                           </Text>
                         </View>
-                      </ScalableTile>
+                      </ScalePressable>
                     );
                   })}
                 </View>
@@ -258,8 +225,9 @@ export default function AmbientModal({
                     const color = NOISE_COLORS[s.id as 'white' | 'pink' | 'brown'];
                     const iconColor = active ? color : Colors.textSecondary;
                     return (
-                      <ScalableTile
+                      <ScalePressable
                         key={s.id}
+                        scaleTo={0.92}
                         style={[
                           styles.tile,
                           active && { borderColor: color, backgroundColor: withAlpha(color, 0.12) },
@@ -272,14 +240,15 @@ export default function AmbientModal({
                             {s.label}
                           </Text>
                         </View>
-                      </ScalableTile>
+                      </ScalePressable>
                     );
                   })}
                 </View>
 
                 <Text style={styles.sectionLabel}>Visual</Text>
                 <View style={styles.grid}>
-                  <ScalableTile
+                  <ScalePressable
+                    scaleTo={0.92}
                     style={[styles.tile, activeAmbientSounds.has('money') && styles.tileRainActive]}
                     onPress={() => handleTilePress('money')}
                   >
@@ -293,7 +262,7 @@ export default function AmbientModal({
                         Make it Rain
                       </Text>
                     </View>
-                  </ScalableTile>
+                  </ScalePressable>
                 </View>
               </ScrollView>
             </Pressable>

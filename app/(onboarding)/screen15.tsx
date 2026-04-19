@@ -1,8 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, View, Pressable, Dimensions } from 'react-native';
-
-const { width: screenWidth } = Dimensions.get('window');
-const isSmallDevice = screenWidth < 380;
+import { StyleSheet, Text, View, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import Animated, {
@@ -26,6 +23,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AudioBuffer, AudioContext } from '@/lib/audio-api-core';
 import { getSavedRecordings, SavedRecording } from '@/lib/recording-store';
 import { configureBackgroundPlaybackAsync } from '@/lib/audio-playback';
+import { ScalePressable } from '@/components/ScalePressable';
 import {
   height,
   BOWL_VOLUME,
@@ -40,6 +38,9 @@ import {
 } from '../session/playback-constants';
 import { usePostHogScreenViewed } from "@/lib/posthog";
 import MakeItRain from '@/app/session/make-it-rain';
+
+const { width: screenWidth } = Dimensions.get('window');
+const isSmallDevice = screenWidth < 380;
 
 const triggerHaptic = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
@@ -499,6 +500,19 @@ export default function Screen15() {
         if (!mountedRef.current) return;
       }
 
+      // Fade all gain nodes to 0 over 1 s before stopping
+      const FADE_S = 1;
+      const now = ctx.currentTime;
+      [bowlGainRef.current, affirmationGainRef.current, binauralGainRef.current].forEach((g) => {
+        if (!g) return;
+        try {
+          g.gain.cancelScheduledValues(now);
+          g.gain.setValueAtTime(g.gain.value, now);
+          g.gain.linearRampToValueAtTime(0, now + FADE_S);
+        } catch { /* best effort */ }
+      });
+      await new Promise<void>((r) => setTimeout(r, FADE_S * 1000));
+
       stopAllAudio();
       pauseSessionTimer();
       if (mountedRef.current) {
@@ -522,7 +536,7 @@ export default function Screen15() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={styles.container}>
         {hasAbundance && (
-          <View style={[StyleSheet.absoluteFillObject, { opacity: 0.1, zIndex: 0 }]} pointerEvents="none">
+          <View style={[StyleSheet.absoluteFillObject, { opacity: 0.8, zIndex: 0 }]} pointerEvents="none">
             <MakeItRain />
           </View>
         )}
@@ -570,12 +584,12 @@ export default function Screen15() {
                   end={{ x: 1, y: 0.5 }}
                   style={[styles.headerTaperLine, styles.headerTaperLineRight]}
                 />
-                <Pressable style={styles.soundToggle} onPress={toggleMute}>
+                <ScalePressable style={styles.soundToggle} onPress={toggleMute} scaleTo={0.94}>
                   <Ionicons name={freqIconName} size={16} color={freqIconColor} />
                   <Text style={[styles.headerLabel, { color: freqIconColor }]}>
                     {settings.freq} Hz
                   </Text>
-                </Pressable>
+                </ScalePressable>
                 {shouldPlayBrainwave ? (
                   <Text style={styles.headerValue}>
                     {BRAINWAVE_LABELS[settings.brainwave] ?? settings.brainwave}
@@ -602,7 +616,7 @@ export default function Screen15() {
                   <Animated.Text
                     style={[styles.affirmationText, messageAnimatedStyle]}
                   >
-                    "{displayMessage}"
+                    {`"${displayMessage}"`}
                   </Animated.Text>
                 </AffirmationCard>
               </AnimatedGlow>

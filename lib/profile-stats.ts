@@ -45,6 +45,14 @@ export async function commitOnboardingFirstSessionToProfile(
   await AsyncStorage.setItem(ONBOARDING_FIRST_SESSION_COMMITTED_KEY, '1');
 }
 
+export async function clearProfileStats(): Promise<void> {
+  await AsyncStorage.multiRemove([
+    TOTAL_PLAY_MS_KEY,
+    SESSION_COUNT_KEY,
+    ONBOARDING_FIRST_SESSION_COMMITTED_KEY,
+  ]);
+}
+
 export type PlayTimeFormat = {
   value: string;
   label: string;

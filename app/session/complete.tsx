@@ -212,7 +212,7 @@ export default function SessionCompleteScreen() {
       clearTimeout(popTimeout);
       clearTimeout(countTimeout);
       cancelAnimationFrame(rafId);
-      try { player?.stop(); player?.remove(); } catch { /* ignore */ }
+      try { player?.pause(); player?.remove(); } catch { /* ignore */ }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

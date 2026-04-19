@@ -1,9 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, FlatList, Pressable, Animated, Dimensions } from 'react-native';
-
-const { width: screenWidth } = Dimensions.get('window');
-const isSmallDevice = screenWidth < 380;
+import { StyleSheet, Text, View, FlatList, Pressable, Animated, Dimensions } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Stack, useRouter } from 'expo-router';
 import { MeshGradientView } from 'expo-mesh-gradient';
@@ -12,6 +9,10 @@ import { Ionicons } from '@expo/vector-icons';
 import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
 import { GlowPresets } from '@/constants/glow';
 import { usePostHogScreenViewed } from '@/lib/posthog';
+import { ScalePressable } from '@/components/ScalePressable';
+
+const { width: screenWidth } = Dimensions.get('window');
+const isSmallDevice = screenWidth < 380;
 
 type PillarItem = {
   id: string;
@@ -69,10 +70,12 @@ const PILLARS: PillarItem[] = [
 function PillarCard({
   item,
   isSelected,
+  isGreyed,
   onSelect,
 }: {
   item: PillarItem;
   isSelected: boolean;
+  isGreyed?: boolean;
   onSelect: () => void;
 }) {
   const [glowState, setGlowState] = useState<GlowEvent>('default');
@@ -91,7 +94,7 @@ function PillarCard({
   };
 
   return (
-    <View style={styles.cardWrapper}>
+    <View style={[styles.cardWrapper, isGreyed && { opacity: 0.38 }]}>
       <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
         <AnimatedGlow
           preset={GlowPresets.ripple(24, item.color, 0.35)}
@@ -150,11 +153,13 @@ export default function PillarScreen() {
 
   const renderItem = ({ item }: { item: (typeof PILLARS)[0] }) => {
     const isSelected = selectedPillar === item.value && !isWriteOwn;
+    const isGreyed = (selectedPillar !== null || isWriteOwn) && !isSelected;
 
     return (
       <PillarCard
         item={item}
         isSelected={isSelected}
+        isGreyed={isGreyed}
         onSelect={() => {
           setSelectedPillar(item.value);
           setIsWriteOwn(false);
@@ -183,9 +188,9 @@ export default function PillarScreen() {
       />
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }} style={styles.backButton}>
+        <ScalePressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }} style={styles.backButton}>
           <Ionicons name="chevron-back" size={24} color={Colors.text} />
-        </TouchableOpacity>
+        </ScalePressable>
       </View>
 
       <View style={styles.content}>
@@ -214,26 +219,28 @@ export default function PillarScreen() {
           style={styles.gridList}
         />
 
-        <TouchableOpacity
-          style={[styles.writeOwnButton, isWriteOwn && styles.writeOwnButtonSelected]}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setIsWriteOwn(true);
-          }}
-        >
-          <Ionicons name="pencil" size={18} color={Colors.text} />
-          <Text style={styles.writeOwnText}>write your own</Text>
-        </TouchableOpacity>
+        <View style={styles.bottomSection}>
+          <ScalePressable
+            style={[styles.writeOwnButton, isWriteOwn && styles.writeOwnButtonSelected]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setIsWriteOwn(true);
+            }}
+          >
+            <Ionicons name="pencil" size={18} color={Colors.text} />
+            <Text style={styles.writeOwnText}>write your own</Text>
+          </ScalePressable>
 
-        <TouchableOpacity
-          style={[styles.mainButton, !isContinueEnabled && styles.mainButtonDisabled]}
-          disabled={!isContinueEnabled}
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleContinue(); }}
-        >
-          <View style={styles.buttonContent}>
-            <Text style={styles.buttonText}>continue</Text>
-          </View>
-        </TouchableOpacity>
+          <ScalePressable
+            style={[styles.mainButton, !isContinueEnabled && styles.mainButtonDisabled]}
+            disabled={!isContinueEnabled}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleContinue(); }}
+          >
+            <View style={styles.buttonContent}>
+              <Text style={styles.buttonText}>continue</Text>
+            </View>
+          </ScalePressable>
+        </View>
       </View>
     </View>
   );
@@ -257,7 +264,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 20,
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
     overflow: 'visible',
   },
   titleBlock: {
@@ -295,7 +302,6 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   gridList: {
-    marginBottom: 14,
     overflow: 'visible',
   },
   row: {
@@ -310,7 +316,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    minHeight: isSmallDevice ? 100 : 120,
+    minHeight: isSmallDevice ? 90 : 108,
     backgroundColor: 'transparent',
     borderRadius: 20,
     borderWidth: 1,
@@ -338,6 +344,10 @@ const styles = StyleSheet.create({
     color: Colors.text,
     textAlign: 'center',
   },
+  bottomSection: {
+    gap: 12,
+    paddingBottom: 40,
+  },
   writeOwnButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -347,9 +357,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.textSecondary,
     paddingVertical: 14,
-    marginTop: 4,
-    width: '90%',
-    alignSelf: 'center',
+    marginHorizontal: 40,
   },
   writeOwnButtonSelected: {
     borderColor: Colors.text,
@@ -363,8 +371,6 @@ const styles = StyleSheet.create({
   mainButton: {
     height: 56,
     borderRadius: 15,
-    marginTop: 16,
-    marginBottom: 40,
     backgroundColor: '#FFFFFF',
     overflow: 'hidden',
   },
