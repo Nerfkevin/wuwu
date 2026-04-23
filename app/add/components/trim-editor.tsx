@@ -10,7 +10,7 @@ import Animated, {
 import { Colors, Fonts } from '@/constants/theme';
 
 const HANDLE_W = 22;
-const TRACK_H = 68;
+const TRACK_H = 52;
 const MAJOR_H = 26;
 const MINOR_H = 13;
 

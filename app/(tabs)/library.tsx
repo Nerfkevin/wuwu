@@ -122,18 +122,27 @@ function DeleteUnderlay({
   onDelete: (item: SavedRecording) => void;
 }) {
   const { close } = useSwipeableItemParams<SavedRecording>();
+  const scaleAnim = useRef(new Animated.Value(1)).current;
   return (
     <View style={styles.underlayLeft}>
-      <ScalePressable
-        style={styles.deleteBtn}
-        onPress={() => {
-          close();
-          onDelete(item);
-        }}
-      >
-        <Ionicons name="trash" size={22} color="#fff" />
-        <Text style={styles.deleteBtnText}>Delete</Text>
-      </ScalePressable>
+      <Animated.View style={[styles.deleteBtn, { transform: [{ scale: scaleAnim }] }]}>
+        <Pressable
+          style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4 }}
+          onPress={() => {
+            close();
+            onDelete(item);
+          }}
+          onPressIn={() =>
+            Animated.spring(scaleAnim, { toValue: 0.88, useNativeDriver: true, speed: 60, bounciness: 0 }).start()
+          }
+          onPressOut={() =>
+            Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 20, bounciness: 8 }).start()
+          }
+        >
+          <Ionicons name="trash" size={22} color="#fff" />
+          <Text style={styles.deleteBtnText}>Delete</Text>
+        </Pressable>
+      </Animated.View>
     </View>
   );
 }

@@ -11,9 +11,7 @@ const IS_DEBUG =
 export function AppPostHogProvider({ children }: { children: ReactNode }) {
   const hasKey = Boolean(POSTHOG_KEY.trim());
 
-  if (IS_DEBUG) {
-    console.log('[PostHog] key present:', hasKey, '| host:', POSTHOG_HOST);
-  }
+  console.log('[PostHog] resolved key:', POSTHOG_KEY, '| env var:', process.env.EXPO_PUBLIC_POSTHOG_KEY);
 
   return (
     <PostHogProvider

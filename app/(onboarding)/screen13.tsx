@@ -42,8 +42,9 @@ const MSG_COUNT    = 5;
 const HEADER_HORIZONTAL_PADDING = isSmallDevice ? 28 : 32;
 const CONTENT_HORIZONTAL_PADDING = isSmallDevice ? 20 : 24;
 const HEADER_TOP_PADDING = isSmallDevice ? 20 : 28;
-const TYPEWRITER_STEP_MS = 33;
-const LETTER_FADE_MS = 480;
+const TYPEWRITER_STEP_MS = 28;
+const TYPEWRITER_STEP_SIZE = isSmallDevice ? 2 : 1;
+const LETTER_FADE_MS = isSmallDevice ? 130 : 280;
 
 type CharToken = { ch: string };
 type WordToken = { chars: CharToken[]; startIdx: number };
@@ -93,9 +94,11 @@ const FREQ_TITLE_WORDS    = charsToWordTokens(FREQ_TITLE_TOKENS);
 
 // ─── frequency slide constants ────────────────────────────────────────────────
 
-const FREQ_ITEM_SIZE   = (width - (isSmallDevice ? 40 : 48) - 24) / 3;
+const FREQ_GAP         = isSmallDevice ? 8 : 12;
+const FREQ_GRID_H_PAD  = isSmallDevice ? CONTENT_HORIZONTAL_PADDING + 14 : CONTENT_HORIZONTAL_PADDING;
+const FREQ_ITEM_SIZE   = (width - 2 * FREQ_GRID_H_PAD - FREQ_GAP * 2) / 3;
 const FREQ_ITEM_RADIUS = 24;
-const FREQ_GRID_HEIGHT = FREQ_ITEM_SIZE * 3 + 12 * 2;
+const FREQ_GRID_HEIGHT = FREQ_ITEM_SIZE * 3 + FREQ_GAP * 2;
 
 const FREQUENCIES = [
   { id: "174", hz: "174 Hz", label: "Pain",       color: Colors.chakra.red    },
@@ -408,10 +411,11 @@ export default function Screen13() {
 
       let i = 0;
       titleIntervalRef.current = setInterval(() => {
-        i += 1;
+        i += TYPEWRITER_STEP_SIZE;
         if (i > tokens.length) {
           clearInterval(titleIntervalRef.current!);
           titleIntervalRef.current = null;
+          setVisible(tokens.length);
           onComplete?.();
           const ft = setTimeout(() => {
             Animated.timing(fadeBody, {
@@ -845,7 +849,7 @@ export default function Screen13() {
           <View style={styles.questionWrap}>
             <View style={styles.pillarHeaderRow}>
               <View style={styles.pillarHeaderLeft}>
-                <View style={styles.titleCharRow}>
+                <View style={[styles.titleCharRow, { minHeight: isSmallDevice ? 72 : 88 }]}>
                   {PILLAR_TITLE_WORDS.map((word, wIdx) => {
                     const charsVisible = Math.max(0, Math.min(word.chars.length, pillarTitleVisible - word.startIdx));
                     if (charsVisible === 0) return null;
@@ -915,7 +919,7 @@ export default function Screen13() {
                         styles.pillarIndicator,
                         { borderColor: isActive ? p.color : "rgba(255,255,255,0.2)", borderWidth: isActive ? 2 : 1.5 },
                       ]}>
-                        <Ionicons name={p.icon as any} size={32} color={isActive ? p.color : "rgba(255,255,255,0.55)"} />
+                        <Ionicons name={p.icon as any} size={isSmallDevice ? 26 : 32} color={isActive ? p.color : "rgba(255,255,255,0.55)"} />
                         <Text style={[styles.pillarShort, isActive && { color: p.color }]}>
                           {PILLAR_SHORT[value]}
                         </Text>
@@ -969,7 +973,7 @@ export default function Screen13() {
           <View style={styles.recArea}>
             <View style={styles.recHeader}>
               <View style={styles.recHeaderLeft}>
-                <View style={styles.titleCharRow}>
+                <View style={[styles.titleCharRow, { minHeight: isSmallDevice ? 64 : 80 }]}>
                   {RECORD_TITLE_WORDS.map((word, wIdx) => {
                     const charsVisible = Math.max(0, Math.min(word.chars.length, recordTitleVisible - word.startIdx));
                     if (charsVisible === 0) return null;
@@ -1020,8 +1024,8 @@ export default function Screen13() {
           <View style={styles.freqArea}>
             <View style={styles.freqHeaderPadded}>
             <View style={styles.freqHeaderBlock}>
-              <View style={styles.freqHeaderLeft}>
-                <View style={styles.titleCharRow}>
+                <View style={styles.freqHeaderLeft}>
+                <View style={[styles.titleCharRow, { minHeight: isSmallDevice ? 64 : 80 }]}>
                   {FREQ_TITLE_WORDS.map((word, wIdx) => {
                     const charsVisible = Math.max(0, Math.min(word.chars.length, freqTitleVisible - word.startIdx));
                     if (charsVisible === 0) return null;
@@ -1180,8 +1184,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     gap: 7,
-    paddingTop: 16,
-    paddingBottom: 4,
+    paddingTop: isSmallDevice ? 8 : 16,
+    paddingBottom: isSmallDevice ? 2 : 4,
   },
   dot: {
     width: 28,
@@ -1216,7 +1220,7 @@ const styles = StyleSheet.create({
   questionWrap: {
     paddingHorizontal: HEADER_HORIZONTAL_PADDING,
     paddingTop: HEADER_TOP_PADDING,
-    paddingBottom: isSmallDevice ? 28 : 36,
+    paddingBottom: isSmallDevice ? 14 : 36,
     gap: 8,
   },
   question: {
@@ -1240,13 +1244,13 @@ const styles = StyleSheet.create({
   grid:     { overflow: "visible" },
   row: {
     justifyContent: "space-between",
-    marginBottom: 20,
+    marginBottom: isSmallDevice ? 12 : 20,
     overflow: "visible",
   },
   cardWrapper: { flex: 1, maxWidth: "46%", overflow: "visible" },
   card: {
     width: "100%",
-    minHeight: isSmallDevice ? 100 : 115,
+    minHeight: isSmallDevice ? 88 : 115,
     backgroundColor: "transparent",
     borderRadius: 20,
     borderWidth: 1,
@@ -1281,13 +1285,13 @@ const styles = StyleSheet.create({
   pillarRow: {
     flexDirection: "row",
     justifyContent: "center",
-    gap: isSmallDevice ? 14 : 18,
-    paddingTop: isSmallDevice ? 22 : 30,
-    paddingBottom: isSmallDevice ? 22 : 30,
+    gap: isSmallDevice ? 10 : 18,
+    paddingTop: isSmallDevice ? 12 : 30,
+    paddingBottom: isSmallDevice ? 12 : 30,
   },
   pillarIndicator: {
-    width: isSmallDevice ? 88 : 96,
-    height: isSmallDevice ? 88 : 96,
+    width: isSmallDevice ? 82 : 96,
+    height: isSmallDevice ? 82 : 96,
     borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
@@ -1295,17 +1299,18 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   pillarShort: {
-    fontSize: 12,
+    fontSize: isSmallDevice ? 10 : 12,
     fontFamily: Fonts.mono,
     color: "rgba(255,255,255,0.5)",
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
     textTransform: "lowercase",
+    textAlign: "center",
   },
   affDescRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    marginBottom: 14,
+    marginBottom: isSmallDevice ? 6 : 14,
   },
   affDecorIcon: {
     marginLeft: 12,
@@ -1323,8 +1328,8 @@ const styles = StyleSheet.create({
   shuffleRow: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    marginBottom: 12,
-    marginTop: 6,
+    marginBottom: isSmallDevice ? 6 : 12,
+    marginTop: isSmallDevice ? 2 : 6,
   },
   shuffleBtn: {
     width: 34,
@@ -1334,12 +1339,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  msgsWrap: { gap: 9 },
+  msgsWrap: { gap: isSmallDevice ? 7 : 9 },
   msgCard: {
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.18)",
     borderRadius: 15,
-    paddingVertical: isSmallDevice ? 12 : 14,
+    paddingVertical: isSmallDevice ? 9 : 14,
     paddingHorizontal: 18,
     backgroundColor: "rgba(255,255,255,0.04)",
   },
@@ -1383,7 +1388,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.serif,
     fontSize: isSmallDevice ? 26 : 30,
     color: Colors.text,
-    lineHeight: 40,
+    lineHeight: isSmallDevice ? 32 : 40,
     marginBottom: 6,
   },
   recSubtitle: {
@@ -1393,7 +1398,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   micDecor: {
-    fontSize: 48,
+    fontSize: isSmallDevice ? 34 : 48,
     marginLeft: 8,
     marginTop: 4,
   },
@@ -1459,13 +1464,13 @@ const styles = StyleSheet.create({
   freqArea: {
     flex: 1,
     paddingTop: HEADER_TOP_PADDING,
-    gap: 16,
+    gap: isSmallDevice ? 8 : 16,
   },
   freqHeaderPadded: {
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
   },
   freqGridSection: {
-    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
+    paddingHorizontal: FREQ_GRID_H_PAD,
   },
   freqHeaderBlock: {
     flexDirection: "row",
@@ -1483,9 +1488,9 @@ const styles = StyleSheet.create({
   },
   freqTitle: {
     fontFamily: Fonts.serif,
-    fontSize: isSmallDevice ? 26 : 30,
+    fontSize: isSmallDevice ? 22 : 26,
     color: Colors.text,
-    lineHeight: 40,
+    lineHeight: isSmallDevice ? 28 : 34,
   },
   freqSubtitle: {
     fontFamily: Fonts.mono,
@@ -1503,7 +1508,7 @@ const styles = StyleSheet.create({
   bgDividerRow: {
     width: "100%",
     marginTop: 2,
-    marginBottom: 18,
+    marginBottom: isSmallDevice ? 6 : 12,
   },
   bgDividerGradient: {
     height: 2,
@@ -1520,8 +1525,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   bgItem: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingHorizontal: isSmallDevice ? 10 : 14,
+    paddingVertical: isSmallDevice ? 5 : 7,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
@@ -1533,7 +1538,7 @@ const styles = StyleSheet.create({
   },
   bgText: {
     fontFamily: Fonts.mono,
-    fontSize: 14,
+    fontSize: isSmallDevice ? 12 : 14,
     color: Colors.textSecondary,
   },
   bgTextSelected: { color: Colors.text },
@@ -1543,14 +1548,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.textSecondary,
     lineHeight: 16,
-    marginTop: 6,
+    marginTop: isSmallDevice ? -30 : 0,
     textAlign: "center",
   },
   freqList: { flexGrow: 0 },
   freqRow: {
     flexDirection: "row",
-    gap: 12,
-    marginBottom: 12,
+    gap: FREQ_GAP,
+    marginBottom: FREQ_GAP,
   },
   freqCard: {
     width: FREQ_ITEM_SIZE,
@@ -1563,7 +1568,7 @@ const styles = StyleSheet.create({
   },
   freqHz: {
     fontFamily: Fonts.serifBold,
-    fontSize: 24,
+    fontSize: isSmallDevice ? 18 : 24,
     color: Colors.text,
     marginBottom: 2,
     textAlign: "center",
@@ -1585,12 +1590,12 @@ const styles = StyleSheet.create({
   // footer
   footer: {
     paddingHorizontal: isSmallDevice ? 24 : 32,
-    paddingBottom: isSmallDevice ? 10 : 10,
-    paddingTop: 12,
+    paddingBottom: isSmallDevice ? 8 : 10,
+    paddingTop: isSmallDevice ? 6 : 12,
   },
   continueButton: {
     borderRadius: 20,
-    paddingVertical: 18,
+    paddingVertical: isSmallDevice ? 14 : 18,
     alignItems: "center",
   },
   continueText: {

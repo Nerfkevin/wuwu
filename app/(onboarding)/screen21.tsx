@@ -277,34 +277,34 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1 },
 
   header: {
-    paddingHorizontal: isSmallDevice ? 24 : 28,
-    paddingTop: isSmallDevice ? 20 : 28,
-    paddingBottom: 8,
+    paddingHorizontal: isSmallDevice ? 20 : 28,
+    paddingTop: isSmallDevice ? 16 : 28,
+    paddingBottom: 4,
   },
   title: {
     fontSize: isSmallDevice ? 26 : 32,
     color: "#fff",
     fontFamily: Fonts.serif,
     lineHeight: isSmallDevice ? 36 : 44,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   subtitle: {
-    fontSize: isSmallDevice ? 12 : 14,
+    fontSize: isSmallDevice ? 11 : 14,
     color: "rgba(255,255,255,0.5)",
     fontFamily: Fonts.mono,
     letterSpacing: 0.2,
-    marginBottom: -30,
+    marginBottom: -24,
   },
 
   wreathSection: {
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: -50,
+    marginBottom: -42,
     backgroundColor: "transparent",
   },
   wreathImage: {
-    width: isSmallDevice ? 200 : 340,
-    height: isSmallDevice ? 80 : 190,
+    width: isSmallDevice ? 340 : 340,
+    height: isSmallDevice ? 170 : 190,
   },
 
   listWrapper: {
@@ -312,7 +312,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   scrollContent: {
-    paddingHorizontal: isSmallDevice ? 20 : 24,
+    paddingHorizontal: isSmallDevice ? 16 : 24,
     paddingTop: FADE_HEIGHT,
     paddingBottom: FADE_HEIGHT,
     gap: 14,
@@ -335,10 +335,10 @@ const styles = StyleSheet.create({
 
   card: {
     backgroundColor: "rgba(255,255,255,0.06)",
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
-    padding: isSmallDevice ? 16 : 20,
+    padding: isSmallDevice ? 14 : 20,
   },
   cardHeader: {
     flexDirection: "row",
@@ -348,12 +348,12 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     flex: 1,
-    marginRight: 12,
-    fontSize: isSmallDevice ? 16 : 18,
+    marginRight: 10,
+    fontSize: isSmallDevice ? 15 : 18,
     color: "#fff",
     fontFamily: Fonts.serif,
     fontWeight: "700",
-    lineHeight: isSmallDevice ? 22 : 24,
+    lineHeight: isSmallDevice ? 21 : 24,
   },
   cardStars: {
     width: 110,
@@ -368,9 +368,9 @@ const styles = StyleSheet.create({
   },
 
   footer: {
-    paddingHorizontal: isSmallDevice ? 24 : 32,
+    paddingHorizontal: isSmallDevice ? 20 : 32,
     paddingBottom: isSmallDevice ? 12 : 20,
-    paddingTop: 10,
+    paddingTop: 8,
   },
   joinButton: {
     backgroundColor: "#fff",

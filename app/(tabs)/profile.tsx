@@ -9,6 +9,7 @@ import {
   Linking,
   Platform,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { RecordingMicModal } from '@/components/RecordingMicModal';
 import { getRecordingMicPref } from '@/lib/recording-mic-preference';
@@ -74,7 +75,6 @@ export default function ProfileScreen() {
 
   const ph = usePostHog();
   const router = useRouter();
-  const [confirmClear, setConfirmClear] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
   const [playTimeValue, setPlayTimeValue] = useState('0:00');
@@ -119,6 +119,8 @@ export default function ProfileScreen() {
         clearAllRecordings(),
         clearProfileStats(),
         SecureStore.deleteItemAsync('onboarding_completed'),
+        SecureStore.deleteItemAsync('streak_count'),
+        SecureStore.deleteItemAsync('streak_last_date'),
       ]);
       try { ph?.capture('clear_all_data', { component: 'ProfileScreen' }); } catch {}
       router.replace('/(onboarding)/screen1');
@@ -238,40 +240,23 @@ export default function ProfileScreen() {
       </View>
 
       <View style={[styles.section, styles.dangerSection]}>
-        {confirmClear ? (
-          <View style={styles.confirmContainer}>
-            <Text style={styles.confirmTitle}>Are you sure?</Text>
-            <Text style={styles.confirmBody}>
-              This will permanently delete all your recordings, reset your stats, and restart onboarding. This cannot be undone.
-            </Text>
-            <View style={styles.confirmActions}>
-              <ScalePressable
-                style={({ pressed }) => [styles.cancelBtn, pressed && styles.rowPressed]}
-                onPress={() => setConfirmClear(false)}
-                disabled={clearing}
-              >
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </ScalePressable>
-              <ScalePressable
-                style={({ pressed }) => [styles.confirmBtn, pressed && styles.rowPressed]}
-                onPress={() => void handleClearAllData()}
-                disabled={clearing}
-              >
-                <Text style={styles.confirmBtnText}>
-                  {clearing ? 'Clearing…' : 'Yes, clear everything'}
-                </Text>
-              </ScalePressable>
-            </View>
-          </View>
-        ) : (
-          <ScalePressable
-            style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-            onPress={() => setConfirmClear(true)}
-          >
-            <Ionicons name="trash-outline" size={20} color="#FF453A" />
-            <Text style={styles.dangerRowText}>Clear All Data</Text>
-          </ScalePressable>
-        )}
+        <ScalePressable
+          style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+          onPress={() =>
+            Alert.alert(
+              'Clear All Data',
+              'This will permanently delete all your recordings, reset your stats, and restart onboarding. This cannot be undone.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Clear Everything', style: 'destructive', onPress: () => void handleClearAllData() },
+              ]
+            )
+          }
+          disabled={clearing}
+        >
+          <Ionicons name="trash-outline" size={20} color="#FF453A" />
+          <Text style={styles.dangerRowText}>Clear All Data</Text>
+        </ScalePressable>
       </View>
       </ScrollView>
     </View>
@@ -402,52 +387,5 @@ const styles = StyleSheet.create({
     color: '#FF453A',
     flex: 1,
     marginLeft: 12,
-  },
-  confirmContainer: {
-    paddingVertical: 4,
-  },
-  confirmTitle: {
-    fontFamily: Fonts.serifBold,
-    fontSize: 18,
-    color: '#FF453A',
-    marginBottom: 8,
-  },
-  confirmBody: {
-    fontFamily: Fonts.mono,
-    fontSize: 13,
-    color: Colors.textSecondary,
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  confirmActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  cancelBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-  },
-  cancelBtnText: {
-    fontFamily: Fonts.mono,
-    fontSize: 15,
-    color: Colors.text,
-  },
-  confirmBtn: {
-    flex: 2,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,69,58,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,69,58,0.4)',
-    alignItems: 'center',
-  },
-  confirmBtnText: {
-    fontFamily: Fonts.mono,
-    fontSize: 15,
-    color: '#FF453A',
   },
 });

@@ -27,10 +27,11 @@ import { usePostHog, usePostHogScreenViewed } from '@/lib/posthog';
 
 const { width } = Dimensions.get('window');
 const isSmallDevice = width < 380;
-const ITEM_SIZE = (width - 40 - 24) / 3; // (screen width - padding - gaps) / 3
-const ITEM_RADIUS = 24; // Rounded square radius
-// Fixed height: 3 rows × ITEM_SIZE + 2 gaps — keeps layout stable for both Brainwaves (2 rows) and Solfeggio (3 rows)
-const GRID_HEIGHT = ITEM_SIZE * 3 + 12 * 2;
+const ITEM_GAP = isSmallDevice ? 8 : 12;
+const ITEM_H_PAD = isSmallDevice ? 34 : 20; // extra indent for small screens (matches screen13)
+const ITEM_SIZE = (width - 2 * ITEM_H_PAD - ITEM_GAP * 2) / 3;
+const ITEM_RADIUS = 24;
+const GRID_HEIGHT = ITEM_SIZE * 3 + ITEM_GAP * 2;
 
 const FREQUENCIES = [
   { id: '174', hz: '174 Hz', label: 'Pain', color: Colors.chakra.red },
@@ -444,7 +445,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: isSmallDevice ? 44 : 60,
+    paddingTop: isSmallDevice ? 40 : 60,
     paddingBottom: 10,
   },
   backButton: {
@@ -463,7 +464,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   titleBlock: {
-    marginBottom: 20,
+    marginBottom: 0,
   },
   titleRow: {
     flexDirection: 'row',
@@ -490,8 +491,8 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   freqRow: {
-    gap: 12,
-    marginBottom: 12,
+    gap: ITEM_GAP,
+    marginBottom: ITEM_GAP,
   },
   freqCard: {
     width: ITEM_SIZE,
@@ -525,13 +526,14 @@ const styles = StyleSheet.create({
   freqGridContainer: {
     height: GRID_HEIGHT,
     marginTop: 12,
+    paddingHorizontal: isSmallDevice ? 14 : 0,
   },
   brainwaveDisclaimer: {
     fontFamily: Fonts.mono,
     fontSize: 11,
     color: Colors.textSecondary,
     lineHeight: 16,
-    marginTop: 6,
+    marginTop: isSmallDevice ? -50 : 6,
     marginBottom: 4,
     textAlign: 'center',
   },
@@ -560,8 +562,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   bgItem: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingHorizontal: isSmallDevice ? 10 : 14,
+    paddingVertical: isSmallDevice ? 5 : 7,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
@@ -573,7 +575,7 @@ const styles = StyleSheet.create({
   },
   bgText: {
     fontFamily: Fonts.mono,
-    fontSize: 14,
+    fontSize: isSmallDevice ? 12 : 14,
     color: Colors.textSecondary,
   },
   bgTextSelected: {

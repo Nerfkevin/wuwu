@@ -83,7 +83,8 @@ export default function PlaybackScreen() {
     isPlaying, isBowlMuted, isOscMuted, activeAmbientSounds,
     volume, recordings, currentTrackIndex, completedSetCount, sessionElapsedMs,
     handlePlayToggle, stopSession, fadeOutAll, toggleBowlMute, toggleOscMute,
-    toggleAmbientSound, updateVolume, ambientVolumes, updateAmbientVolume,
+    toggleAmbientSound, updateVolume, setVolumeImmediate,
+    ambientVolumes, updateAmbientVolume,
   } = useAudioEngine({
     selectedBowlAudio,
     selectedFrequency,
@@ -124,6 +125,7 @@ export default function PlaybackScreen() {
   const [resolvedCardColor, setResolvedCardColor] = useState<string>(selectedColor);
   const [cardColorRange, setCardColorRange] = useState({ from: selectedColor, to: selectedColor });
   const sliderWidthSV = useSharedValue(0);
+  const lastVolumeCommitMsSV = useSharedValue(0);
 
   const cardBorderTransitionColors = useMemo(
     () => [
@@ -177,21 +179,34 @@ export default function PlaybackScreen() {
   }, [volume, volumeProgress]);
 
   // ─── Volume gesture ───────────────────────────────────────────────────────
+  // Real-time audio updates every frame via refs (no React re-render).
+  // React state commits throttled to ~10Hz so the label updates smoothly
+  // without thrashing the whole screen re-render.
+  const VOLUME_COMMIT_INTERVAL_MS = 100;
   const gesture = Gesture.Pan()
     .onStart((e) => {
       runOnJS(triggerHaptic)();
-      if (sliderWidthSV.value > 0) {
-        const p = Math.max(0.01, Math.min(1, e.x / sliderWidthSV.value));
-        volumeProgress.value = p;
+      if (sliderWidthSV.value <= 0) return;
+      const p = Math.max(0.01, Math.min(1, e.x / sliderWidthSV.value));
+      volumeProgress.value = p;
+      lastVolumeCommitMsSV.value = Date.now();
+      runOnJS(updateVolume)(p);
+    })
+    .onUpdate((e) => {
+      if (sliderWidthSV.value <= 0) return;
+      const p = Math.max(0.01, Math.min(1, e.x / sliderWidthSV.value));
+      volumeProgress.value = p;
+      runOnJS(setVolumeImmediate)(p);
+      const now = Date.now();
+      if (now - lastVolumeCommitMsSV.value >= VOLUME_COMMIT_INTERVAL_MS) {
+        lastVolumeCommitMsSV.value = now;
         runOnJS(updateVolume)(p);
       }
     })
-    .onUpdate((e) => {
-      if (sliderWidthSV.value > 0) {
-        const p = Math.max(0.01, Math.min(1, e.x / sliderWidthSV.value));
-        volumeProgress.value = p;
-        runOnJS(updateVolume)(p);
-      }
+    .onEnd((e) => {
+      if (sliderWidthSV.value <= 0) return;
+      const p = Math.max(0.01, Math.min(1, e.x / sliderWidthSV.value));
+      runOnJS(updateVolume)(p);
     });
 
   // ─── Animated styles ──────────────────────────────────────────────────────

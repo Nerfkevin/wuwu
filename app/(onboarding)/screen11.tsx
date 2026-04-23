@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
   },
   graph: {
     width: width,
-    height: width * 1,
+    height: isSmallDevice ? width * 0.9 : width * 1,
     alignSelf: "center",
   },
   pill: {
@@ -327,7 +327,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
-    paddingVertical: 18,
+    paddingVertical: isSmallDevice ? 12 : 18,
     paddingHorizontal: 20,
   },
   pillText: {
@@ -368,9 +368,9 @@ const styles = StyleSheet.create({
     width: "100%",
     backgroundColor: "#fff",
     borderRadius: 24,
-    paddingHorizontal: 28,
-    paddingTop: 28,
-    paddingBottom: 24,
+    paddingHorizontal: isSmallDevice ? 20 : 28,
+    paddingTop: isSmallDevice ? 20 : 28,
+    paddingBottom: isSmallDevice ? 16 : 24,
     alignItems: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 12 },
@@ -379,10 +379,10 @@ const styles = StyleSheet.create({
     elevation: 20,
   },
   icon: {
-    width: 80,
-    height: 80,
-    borderRadius: 22,
-    marginBottom: 20,
+    width: isSmallDevice ? 60 : 80,
+    height: isSmallDevice ? 60 : 80,
+    borderRadius: isSmallDevice ? 16 : 22,
+    marginBottom: isSmallDevice ? 14 : 20,
     overflow: "hidden",
   },
   modalTitle: {
@@ -395,8 +395,8 @@ const styles = StyleSheet.create({
   },
   steps: {
     width: "100%",
-    gap: 14,
-    marginBottom: 28,
+    gap: isSmallDevice ? 10 : 14,
+    marginBottom: isSmallDevice ? 20 : 28,
   },
   stepRow: {
     flexDirection: "row",
@@ -424,7 +424,7 @@ const styles = StyleSheet.create({
   getStartedBtn: {
     width: "100%",
     borderRadius: 20,
-    paddingVertical: 18,
+    paddingVertical: isSmallDevice ? 14 : 18,
     alignItems: "center",
   },
   getStartedText: {

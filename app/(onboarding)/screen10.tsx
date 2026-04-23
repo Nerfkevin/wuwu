@@ -185,7 +185,7 @@ const text = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     flexWrap: "wrap",
-    marginBottom: 34,
+    marginBottom: isSmallDevice ? 16 : 34,
     minHeight: isSmallDevice ? 46 : 56,
   },
   word: {
@@ -199,15 +199,15 @@ const text = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
-    paddingVertical: 14,
+    paddingVertical: isSmallDevice ? 10 : 14,
     paddingHorizontal: 16,
-    gap: 8,
+    gap: isSmallDevice ? 5 : 8,
   },
   quote: {
-    fontSize: 13,
+    fontSize: isSmallDevice ? 12 : 13,
     color: "rgba(255,255,255,0.8)",
     fontFamily: Fonts.mono,
-    lineHeight: 20,
+    lineHeight: isSmallDevice ? 18 : 20,
     textAlign: "center",
   },
   author: {
@@ -251,8 +251,8 @@ const dots = StyleSheet.create({
     gap: 6,
     alignItems: "center",
     justifyContent: "center",
-    paddingTop: 20,
-    paddingBottom: 8,
+    paddingTop: isSmallDevice ? 10 : 20,
+    paddingBottom: isSmallDevice ? 4 : 8,
   },
   dot: {
     width: 22,
@@ -264,7 +264,7 @@ const dots = StyleSheet.create({
 
 // ─── main screen ──────────────────────────────────────────────────────────────
 
-const IMG_SIZE = isSmallDevice ? width * 0.56 : width * 0.62;
+const IMG_SIZE = isSmallDevice ? width * 0.44 : width * 0.62;
 
 export default function Screen10() {
   usePostHogScreenViewed({
@@ -431,8 +431,8 @@ const styles = StyleSheet.create({
   imageArea: {
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 28,
-    marginBottom: 20,
+    marginTop: isSmallDevice ? 12 : 28,
+    marginBottom: isSmallDevice ? 8 : 20,
   },
   image: {
     width: "100%",

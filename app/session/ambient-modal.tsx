@@ -63,6 +63,7 @@ const SHEET_H_PAD = 20;
 const TILE_GAP = 10;
 const SCREEN_W = Dimensions.get('window').width;
 const SCREEN_H = Dimensions.get('window').height;
+const isSmallDevice = SCREEN_W < 380;
 const TILE_W = Math.floor((SCREEN_W - SHEET_H_PAD * 2 - TILE_GAP * 2) / 3);
 const DISMISS_THRESHOLD = 80;
 const DISMISS_VELOCITY = 800;
@@ -163,6 +164,9 @@ export default function AmbientModal({
 
   const handleTilePress = (id: AmbientSoundId) => {
     setFocusedId(id);
+    if (id === 'money' && !activeAmbientSounds.has(id) && ambientVolumes[id] === undefined) {
+      onAmbientVolumeChange(id, 0.2);
+    }
     onToggle(id);
   };
 
@@ -183,7 +187,7 @@ export default function AmbientModal({
 
               <ScrollView
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: 110 }}
+                contentContainerStyle={{ paddingBottom: isSmallDevice ? 180 : 110 }}
               >
                 <Text style={styles.sectionLabel}>Nature</Text>
                 <View style={styles.grid}>

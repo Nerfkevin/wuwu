@@ -645,7 +645,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 7,
     paddingTop: 10,
-    paddingBottom: 20,
+    paddingBottom: isSmallDevice ? 10 : 20,
   },
   dot: {
     width: 28,
@@ -704,7 +704,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: isSmallDevice ? 28 : 32,
   },
   optionsPanel: {
-    gap: 10,
+    gap: isSmallDevice ? 7 : 10,
     position: "absolute",
     top: isSmallDevice ? 24 : 50,
     left: isSmallDevice ? 28 : 32,
@@ -714,7 +714,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.25)",
     borderRadius: 15,
-    paddingVertical: isSmallDevice ? 13 : 15,
+    paddingVertical: isSmallDevice ? 10 : 15,
     alignItems: "center",
   },
   optionRow: {
@@ -746,7 +746,7 @@ const styles = StyleSheet.create({
   },
   continueButton: {
     borderRadius: 20,
-    paddingVertical: 18,
+    paddingVertical: isSmallDevice ? 14 : 18,
     alignItems: "center",
   },
   continueText: {

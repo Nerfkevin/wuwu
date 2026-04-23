@@ -116,6 +116,23 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
   const params = useLocalSearchParams<{ text?: string; pillar?: string; writeOwn?: string; onboarding?: string }>();
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(audioRecorder);
+  const [dotCount, setDotCount] = useState(1);
+  const MAX_RECORDING_MS = 20_000;
+
+  useEffect(() => {
+    if (!recorderState.isRecording) return;
+    const id = setInterval(() => setDotCount((p) => (p % 3) + 1), 500);
+    return () => clearInterval(id);
+  }, [recorderState.isRecording]);
+
+  useEffect(() => {
+    if (!recorderState.isRecording) return;
+    const id = setTimeout(() => {
+      void stopRecording();
+    }, MAX_RECORDING_MS);
+    return () => clearTimeout(id);
+  }, [recorderState.isRecording]);
+
   const [audioUri, setAudioUri] = useState('');
   const [hasRecorded, setHasRecorded] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -973,7 +990,7 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
                 {isApplyingEnhance
                   ? 'processing...'
                   : recorderState.isRecording
-                    ? 'recording...'
+                    ? `recording${'.'.repeat(dotCount).padEnd(3, '\u00A0')}`
                     : 'tap to record your affirmation'}
               </Text>
             </View>
@@ -1109,7 +1126,7 @@ const styles = StyleSheet.create({
   cardGlowWrapper: {
     width: '100%',
     alignItems: 'center',
-    marginTop: 24,
+    marginTop: isSmallDevice ? 8 : 14,
   },
   affirmationText: {
     fontFamily: Fonts.serif,
@@ -1183,12 +1200,12 @@ const styles = StyleSheet.create({
   reviewTop: {
     width: '100%',
     alignItems: 'center',
-    gap: 12,
+    gap: isSmallDevice ? 8 : 12,
     paddingTop: 4,
   },
   reviewBottom: {
     width: '100%',
-    gap: 12,
+    gap: isSmallDevice ? 8 : 12,
   },
   recordButton: {
     width: isSmallDevice ? 60 : 72,
@@ -1231,11 +1248,12 @@ const styles = StyleSheet.create({
   playButtonRow: {
     width: '100%',
     alignItems: 'center',
+    marginBottom: isSmallDevice ? 8 : 12,
   },
   playButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: isSmallDevice ? 44 : 48,
+    height: isSmallDevice ? 44 : 48,
+    borderRadius: isSmallDevice ? 22 : 24,
     backgroundColor: '#FF3B1F',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1245,8 +1263,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 10,
-    marginTop: -20,
-    marginBottom: 20,
+    marginBottom: isSmallDevice ? 10 : 16,
   },
   effectBtn: {
     flex: 1,
@@ -1256,8 +1273,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    gap: 4,
+    paddingVertical: isSmallDevice ? 7 : 9,
+    gap: 3,
   },
   effectBtnEnhanceActive: {
     backgroundColor: 'rgba(155,109,255,0.18)',

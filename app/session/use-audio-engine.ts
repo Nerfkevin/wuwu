@@ -485,12 +485,21 @@ export function useAudioEngine({
   }, []);
 
   // ─── Volume ───────────────────────────────────────────────────────────────
+  // Cheap, ref-only path for high-frequency gesture updates — no React re-render.
+  const setVolumeImmediate = useCallback((progress: number) => {
+    const clamped = Math.max(1, Math.min(100, Math.round(progress * 100)));
+    const nextGain = affirmationPercentToGain(clamped);
+    affirmationVolumeRef.current = nextGain;
+    if (affirmationGainRef.current) affirmationGainRef.current.gain.value = nextGain;
+  }, []);
+
+  // Commits the value to React state (for label/persistence). Throttled by caller.
   const updateVolume = useCallback((progress: number) => {
     const clamped = Math.max(1, Math.min(100, Math.round(progress * 100)));
     const nextGain = affirmationPercentToGain(clamped);
-    setVolume(clamped);
     affirmationVolumeRef.current = nextGain;
     if (affirmationGainRef.current) affirmationGainRef.current.gain.value = nextGain;
+    setVolume((prev) => (prev === clamped ? prev : clamped));
   }, []);
 
   const updateAmbientVolume = useCallback((id: AmbientSoundId, progress: number) => {
@@ -733,6 +742,7 @@ export function useAudioEngine({
     toggleOscMute,
     toggleAmbientSound,
     updateVolume,
+    setVolumeImmediate,
     ambientVolumes,
     updateAmbientVolume,
   };

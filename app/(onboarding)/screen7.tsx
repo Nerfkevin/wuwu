@@ -460,8 +460,8 @@ function DaySnapOptions({
 const snapStyles = StyleSheet.create({
   panel: {
     position: "absolute",
-    left: isSmallDevice ? 28 : 32,
-    right: isSmallDevice ? 28 : 32,
+    left: isSmallDevice ? 24 : 32,
+    right: isSmallDevice ? 24 : 32,
     alignItems: "center",
     gap: 28,
   },
@@ -847,8 +847,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     gap: 7,
-    paddingTop: 16,
-    paddingBottom: 4,
+    paddingTop: isSmallDevice ? 8 : 16,
+    paddingBottom: isSmallDevice ? 2 : 4,
   },
   dot: {
     width: 28,
@@ -861,9 +861,9 @@ const styles = StyleSheet.create({
   },
   questionSlide: {
     width,
-    paddingHorizontal: isSmallDevice ? 28 : 32,
-    paddingTop: isSmallDevice ? 28 : 20,
-    gap: 8,
+    paddingHorizontal: isSmallDevice ? 24 : 32,
+    paddingTop: isSmallDevice ? 14 : 20,
+    gap: isSmallDevice ? 4 : 8,
   },
   questionSlot: {
     width: "100%",
@@ -903,19 +903,19 @@ const styles = StyleSheet.create({
   optionsArea: {
     flex: 1,
     justifyContent: "center",
-    paddingHorizontal: isSmallDevice ? 28 : 32,
+    paddingHorizontal: isSmallDevice ? 24 : 32,
   },
   optionsPanel: {
-    gap: 10,
+    gap: isSmallDevice ? 7 : 10,
     position: "absolute",
-    left: isSmallDevice ? 28 : 32,
-    right: isSmallDevice ? 28 : 32,
+    left: isSmallDevice ? 24 : 32,
+    right: isSmallDevice ? 24 : 32,
   },
   option: {
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.25)",
     borderRadius: 15,
-    paddingVertical: isSmallDevice ? 13 : 15,
+    paddingVertical: isSmallDevice ? 10 : 15,
     alignItems: "center",
   },
   optionRow: {
@@ -942,12 +942,12 @@ const styles = StyleSheet.create({
 
   footer: {
     paddingHorizontal: isSmallDevice ? 24 : 32,
-    paddingBottom: isSmallDevice ? 10 : 10,
-    paddingTop: 12,
+    paddingBottom: isSmallDevice ? 8 : 10,
+    paddingTop: isSmallDevice ? 6 : 12,
   },
   continueButton: {
     borderRadius: 20,
-    paddingVertical: 18,
+    paddingVertical: isSmallDevice ? 14 : 18,
     alignItems: "center",
   },
   continueText: {

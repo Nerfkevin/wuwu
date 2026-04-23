@@ -6,6 +6,7 @@ import {
   Animated,
   Dimensions,
   PanResponder,
+  Pressable,
 } from "react-native";
 import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -86,6 +87,7 @@ export default function Screen20() {
   const currentPath = useRef("");
   const fadeContinue = useRef(new Animated.Value(0)).current;
   const fadeContent = useRef(new Animated.Value(0)).current;
+  const clearScale = useRef(new Animated.Value(1)).current;
 
   const [titleVisibleCount, setTitleVisibleCount] = useState(0);
   const [titleDone, setTitleDone] = useState(false);
@@ -284,9 +286,20 @@ export default function Screen20() {
                   ))}
                 </Svg>
                 {hasSignature && (
-                  <ScalePressable style={styles.clearBtn} onPress={handleClear}>
-                    <Text style={styles.clearText}>clear</Text>
-                  </ScalePressable>
+                  <Pressable
+                    style={styles.clearBtn}
+                    onPress={handleClear}
+                    onPressIn={() =>
+                      Animated.spring(clearScale, { toValue: 0.82, useNativeDriver: true, speed: 40 }).start()
+                    }
+                    onPressOut={() =>
+                      Animated.spring(clearScale, { toValue: 1, useNativeDriver: true, speed: 24 }).start()
+                    }
+                  >
+                    <Animated.Text style={[styles.clearText, { transform: [{ scale: clearScale }] }]}>
+                      clear
+                    </Animated.Text>
+                  </Pressable>
                 )}
               </View>
               <Text style={styles.hint}>
@@ -394,13 +407,13 @@ const styles = StyleSheet.create({
   },
   clearBtn: {
     position: "absolute",
-    bottom: 10,
+    top: 10,
     right: 14,
     zIndex: 5,
   },
   clearText: {
     fontSize: isSmallDevice ? 12 : 14,
-    color: "#5A1A9E",
+    color: "#FF3B30",
     fontFamily: Fonts.mono,
   },
   hint: {

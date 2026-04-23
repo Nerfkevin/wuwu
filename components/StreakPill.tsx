@@ -1,32 +1,37 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { ScalePressable } from '@/components/ScalePressable';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import * as SecureStore from 'expo-secure-store';
 import * as Haptics from 'expo-haptics';
 import { Fonts } from '@/constants/theme';
+
+function dateKey(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 export default function StreakPill() {
   const router = useRouter();
   const [streak, setStreak] = useState(0);
 
-  useEffect(() => {
-    Promise.all([
-      SecureStore.getItemAsync('streak_count'),
-      SecureStore.getItemAsync('streak_last_date'),
-    ]).then(([countRaw, lastDateStr]) => {
-      const count = countRaw ? parseInt(countRaw, 10) : 0;
-      if (!lastDateStr) return;
-      const t = new Date();
-      t.setHours(0, 0, 0, 0);
-      const yest = new Date(t);
-      yest.setDate(t.getDate() - 1);
-      const fmt = (d: Date) =>
-        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const isAlive = lastDateStr === fmt(t) || lastDateStr === fmt(yest);
-      setStreak(isAlive ? count : 0);
-    });
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      Promise.all([
+        SecureStore.getItemAsync('streak_count'),
+        SecureStore.getItemAsync('streak_last_date'),
+      ]).then(([countRaw, lastDateStr]) => {
+        const count = countRaw ? parseInt(countRaw, 10) : 0;
+        if (!lastDateStr) { setStreak(0); return; }
+        const t = new Date();
+        t.setHours(0, 0, 0, 0);
+        const yest = new Date(t);
+        yest.setDate(t.getDate() - 1);
+        const isAlive = lastDateStr === dateKey(t) || lastDateStr === dateKey(yest);
+        setStreak(isAlive ? count : 0);
+      });
+    }, [])
+  );
 
   const handlePress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
