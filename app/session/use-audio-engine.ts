@@ -4,6 +4,7 @@ import { AppState } from 'react-native';
 import { AudioBuffer, AudioContext } from '@/lib/audio-api-core';
 import * as Haptics from 'expo-haptics';
 import { getSavedRecordings, SavedRecording } from '@/lib/recording-store';
+import { ALL_PLAYLIST_ID, getPlaylists } from '@/lib/playlist-store';
 import {
   TRACK_GAP_MS,
   BOWL_VOLUME,
@@ -36,6 +37,7 @@ export type AudioEngineParams = {
   shouldPlaySingingBowl: boolean;
   shouldPlayBrainwave: boolean;
   shouldPlayPure: boolean;
+  playlistId?: string;
 };
 
 export function useAudioEngine({
@@ -45,6 +47,7 @@ export function useAudioEngine({
   shouldPlaySingingBowl,
   shouldPlayBrainwave,
   shouldPlayPure,
+  playlistId = ALL_PLAYLIST_ID,
 }: AudioEngineParams) {
   // ─── State ────────────────────────────────────────────────────────────────
   const [isPlaying, setIsPlaying] = useState(false);
@@ -689,12 +692,29 @@ export function useAudioEngine({
     const load = async () => {
       const entries = await getSavedRecordings();
       if (!mounted) return;
-      recordingsRef.current = entries;
-      setRecordings(entries);
+
+      let queue = entries;
+      if (playlistId && playlistId !== ALL_PLAYLIST_ID) {
+        const playlists = await getPlaylists();
+        if (!mounted) return;
+        const playlist = playlists.find((p) => p.id === playlistId);
+        if (playlist) {
+          const byId = new Map(entries.map((r) => [r.id, r]));
+          queue = playlist.recordingIds
+            .map((id) => byId.get(id))
+            .filter(Boolean) as SavedRecording[];
+        } else {
+          queue = [];
+        }
+      }
+
+      recordingsRef.current = queue;
+      setRecordings(queue);
+      setTrackIndex(0);
     };
     void load();
     return () => { mounted = false; };
-  }, []);
+  }, [playlistId]);
 
   useEffect(() => {
     if (!isPlaying || recordings.length === 0 || affirmationSourceRef.current) return;

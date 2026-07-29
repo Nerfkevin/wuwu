@@ -2,7 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { StyleSheet, Text, View, FlatList, Pressable, Animated, Dimensions } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { MeshGradientView } from 'expo-mesh-gradient';
 import { Colors, Fonts } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -127,6 +127,8 @@ export default function PillarScreen() {
   });
 
   const router = useRouter();
+  const params = useLocalSearchParams<{ playlistId?: string }>();
+  const playlistId = typeof params.playlistId === 'string' ? params.playlistId : undefined;
   const [selectedPillar, setSelectedPillar] = useState<string | null>(null);
   const [isWriteOwn, setIsWriteOwn] = useState(false);
 
@@ -140,13 +142,23 @@ export default function PillarScreen() {
     if (isWriteOwn) {
       router.push({
         pathname: '/add/recording',
-        params: { pillar: selectedPillar ?? 'Confidence', writeOwn: '1' },
+        params: {
+          pillar: selectedPillar ?? 'Confidence',
+          writeOwn: '1',
+          ...(playlistId ? { playlistId } : {}),
+        },
       });
       return;
     }
 
     if (selectedPillar) {
-      router.push({ pathname: '/add/affirmation', params: { pillar: selectedPillar } });
+      router.push({
+        pathname: '/add/affirmation',
+        params: {
+          pillar: selectedPillar,
+          ...(playlistId ? { playlistId } : {}),
+        },
+      });
       return;
     }
   };

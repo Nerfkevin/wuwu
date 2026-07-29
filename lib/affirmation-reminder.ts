@@ -28,7 +28,7 @@ function todayString(): string {
 async function scheduleAt(date: Date): Promise<string> {
   return Notifications.scheduleNotificationAsync({
     content: {
-      title: "Do you feel aligned with your goals?",
+      title: "Still time for you today",
       body: "You haven't done your affirmation today — take a moment now.",
       sound: true,
     },

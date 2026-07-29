@@ -12,12 +12,12 @@ import {
   Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
 import { Colors, Fonts, Layout } from '@/constants/theme';
 import { GlowPresets } from '@/constants/glow';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createAudioPlayer } from '@/lib/expo-audio';
 import type { AudioPlayer } from '@/lib/expo-audio';
@@ -35,8 +35,10 @@ import {
   Playlist,
   createPlaylist,
   deletePlaylist,
+  getActiveLibraryPlaylistId,
   getPlaylists,
   reorderPlaylistRecordings,
+  setActiveLibraryPlaylistId,
 } from '@/lib/playlist-store';
 import { usePostHog, usePostHogScreenViewed } from '@/lib/posthog';
 import { ScalePressable } from '@/components/ScalePressable';
@@ -161,7 +163,7 @@ export default function LibraryScreen() {
   const fabScale = useRef(new Animated.Value(1)).current;
   const [recordings, setRecordings] = useState<SavedRecording[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
-  const [selectedPlaylistId, setSelectedPlaylistId] = useState(ALL_PLAYLIST_ID);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState(getActiveLibraryPlaylistId);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [pressedHandleId, setPressedHandleId] = useState<string | null>(null);
@@ -300,6 +302,11 @@ export default function LibraryScreen() {
     setPressedHandleId(null);
   }, []);
 
+  const selectPlaylist = (id: string) => {
+    setSelectedPlaylistId(id);
+    setActiveLibraryPlaylistId(id);
+  };
+
   const handleCreatePlaylist = async () => {
     const name = newPlaylistName.trim();
     if (!name) return;
@@ -307,7 +314,7 @@ export default function LibraryScreen() {
     setPlaylists((prev) => [...prev, playlist]);
     setNewPlaylistName('');
     setShowCreateInput(false);
-    setSelectedPlaylistId(playlist.id);
+    selectPlaylist(playlist.id);
     try {
       ph?.capture('playlist_created');
     } catch {}
@@ -352,7 +359,7 @@ export default function LibraryScreen() {
         onPress: async () => {
           await deletePlaylist(playlist.id);
           setPlaylists((prev) => prev.filter((p) => p.id !== playlist.id));
-          if (selectedPlaylistId === playlist.id) setSelectedPlaylistId(ALL_PLAYLIST_ID);
+          if (selectedPlaylistId === playlist.id) selectPlaylist(ALL_PLAYLIST_ID);
         },
       },
     ]);
@@ -457,7 +464,7 @@ export default function LibraryScreen() {
       >
         <PlaylistChip
           isActive={selectedPlaylistId === ALL_PLAYLIST_ID}
-          onPress={() => { Haptics.selectionAsync(); setSelectedPlaylistId(ALL_PLAYLIST_ID); }}
+          onPress={() => { Haptics.selectionAsync(); selectPlaylist(ALL_PLAYLIST_ID); }}
         >
           <Text
             style={[
@@ -473,7 +480,7 @@ export default function LibraryScreen() {
           <PlaylistChip
             key={pl.id}
             isActive={selectedPlaylistId === pl.id}
-            onPress={() => { Haptics.selectionAsync(); setSelectedPlaylistId(pl.id); }}
+            onPress={() => { Haptics.selectionAsync(); selectPlaylist(pl.id); }}
             onLongPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); handleDeletePlaylist(pl); }}
             delayLongPress={500}
           >
@@ -547,7 +554,15 @@ export default function LibraryScreen() {
         <AnimatedGlow preset={GlowPresets.chakra(30, ['#6B21CC', '#BF5FFF', '#FF4DC4', '#BF5FFF', '#6B21CC'], 6, 6)} activeState={glowState}>
           <Pressable
             style={styles.fab}
-            onPress={() => router.push('/add/pillar')}
+            onPress={() =>
+              router.push({
+                pathname: '/add/pillar',
+                params:
+                  selectedPlaylistId !== ALL_PLAYLIST_ID
+                    ? { playlistId: selectedPlaylistId }
+                    : undefined,
+              })
+            }
             onPressIn={() => {
               setGlowState('press');
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

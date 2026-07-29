@@ -10,6 +10,7 @@ import {
   Pressable,
   ScrollView,
   Easing,
+  Linking,
 } from "react-native";
 import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -17,7 +18,7 @@ import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { createAudioPlayer } from "@/lib/expo-audio";
+import { createAudioPlayer, getRecordingPermissionsAsync } from "@/lib/expo-audio";
 import type { AudioPlayer } from "@/lib/expo-audio";
 import { useFrequencyPreview } from "@/lib/use-frequency-preview";
 import { Fonts, Colors, Layout } from "@/constants/theme";
@@ -360,6 +361,9 @@ export default function Screen13() {
   const [recordTitleVisible,  setRecordTitleVisible]  = useState(0);
   const [freqTitleVisible,    setFreqTitleVisible]    = useState(0);
   const [titleAnimDone,       setTitleAnimDone]       = useState(false);
+
+  // ── mic permission gate ──
+  const [showMicGate, setShowMicGate] = useState(false);
 
   // ── recording slide state ──
   const [recordingSelections, setRecordingSelections] = useState<SelectedRecordingItem[]>([]);
@@ -732,8 +736,13 @@ export default function Screen13() {
     watchPlayerStatus();
   };
 
-  const handleRecord = (item: TrackItem) => {
+  const handleRecord = async (item: TrackItem) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const perm = await getRecordingPermissionsAsync();
+    if (!perm.granted) {
+      setShowMicGate(true);
+      return;
+    }
     router.push({ pathname: "/add/recording", params: { text: item.text, pillar: item.pillar, onboarding: "1" } });
   };
 
@@ -802,15 +811,18 @@ export default function Screen13() {
           activeState="default"
         >
           <View style={[styles.trackOuter, { borderColor: glowColor }]}>
-            <View style={styles.trackInner}>
+            <TouchableOpacity
+              style={styles.trackInner}
+              activeOpacity={0.7}
+              onPress={() => (item.recorded ? handlePlay(item) : handleRecord(item))}
+            >
               <View style={styles.trackTextWrap}>
                 <Text style={styles.trackText} numberOfLines={2}>{item.text}</Text>
                 <Text style={styles.trackSub}>{pillarData?.title ?? item.pillar}</Text>
               </View>
 
-              <TouchableOpacity
+              <View
                 style={[styles.trackActionBtn, { backgroundColor: item.recorded ? glowColor + "22" : "#1e1e1e" }]}
-                onPress={() => item.recorded ? handlePlay(item) : handleRecord(item)}
               >
                 {needsRecording ? (
                   <Animated.View style={micStyle}>
@@ -823,8 +835,8 @@ export default function Screen13() {
                     color={glowColor}
                   />
                 )}
-              </TouchableOpacity>
-            </View>
+              </View>
+            </TouchableOpacity>
           </View>
         </AnimatedGlow>
       </View>
@@ -1170,6 +1182,39 @@ export default function Screen13() {
         </View>
 
       </SafeAreaView>
+
+      {/* ── Mic permission gate overlay ── */}
+      {showMicGate && (
+        <View style={styles.micGateOverlay}>
+          <View style={styles.micGateCard}>
+            <Text style={styles.micGateEmoji}>🎙️</Text>
+            <Text style={styles.micGateTitle}>microphone needed</Text>
+            <Text style={styles.micGateBody}>
+              voice recordings require microphone access. enable it in Settings to record your affirmations in your own voice.
+            </Text>
+            <TouchableOpacity
+              style={styles.micGateSettingsBtn}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                Linking.openSettings();
+              }}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.micGateSettingsBtnText}>open Settings</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.micGateDismissBtn}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowMicGate(false);
+              }}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.micGateDismissText}>not now</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </Animated.View>
   );
 }
@@ -1601,6 +1646,67 @@ const styles = StyleSheet.create({
   continueText: {
     fontSize: isSmallDevice ? 15 : 17,
     fontFamily: Fonts.mono,
+    letterSpacing: 0.3,
+  },
+  micGateOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.72)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 20,
+    paddingHorizontal: 28,
+  },
+  micGateCard: {
+    width: "100%",
+    backgroundColor: "#1a0030",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(155,109,255,0.3)",
+    padding: 28,
+    alignItems: "center",
+    gap: 12,
+  },
+  micGateEmoji: {
+    fontSize: 48,
+    marginBottom: 4,
+  },
+  micGateTitle: {
+    fontFamily: Fonts.serif,
+    fontSize: 24,
+    color: "#fff",
+    textAlign: "center",
+  },
+  micGateBody: {
+    fontFamily: Fonts.mono,
+    fontSize: 13,
+    color: "rgba(255,255,255,0.65)",
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 4,
+  },
+  micGateSettingsBtn: {
+    width: "100%",
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 4,
+  },
+  micGateSettingsBtnText: {
+    fontFamily: Fonts.mono,
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#0a000d",
+    letterSpacing: 0.4,
+  },
+  micGateDismissBtn: {
+    paddingVertical: 8,
+    alignItems: "center",
+  },
+  micGateDismissText: {
+    fontFamily: Fonts.mono,
+    fontSize: 13,
+    color: "rgba(255,255,255,0.4)",
     letterSpacing: 0.3,
   },
 });

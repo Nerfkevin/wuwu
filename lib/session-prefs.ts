@@ -3,8 +3,16 @@ import { Directory, File, Paths } from 'expo-file-system';
 const PREFS_DIR = new Directory(Paths.document, 'prefs');
 const PREFS_FILE = new File(PREFS_DIR, 'session.json');
 
+export type LastSessionSelection = {
+  bg: string;
+  bowlFreq: string;
+  pureFreq: string;
+  brainwave: string;
+};
+
 type SessionPrefs = {
   lastPlaylistId?: string;
+  lastSelection?: LastSessionSelection;
 };
 
 const ensureStorage = () => {
@@ -37,4 +45,14 @@ export const getLastPlaylistId = async (): Promise<string | null> => {
 export const setLastPlaylistId = async (id: string): Promise<void> => {
   const prefs = await read();
   await write({ ...prefs, lastPlaylistId: id });
+};
+
+export const getLastSessionSelection = async (): Promise<LastSessionSelection | null> => {
+  const prefs = await read();
+  return prefs.lastSelection ?? null;
+};
+
+export const setLastSessionSelection = async (selection: LastSessionSelection): Promise<void> => {
+  const prefs = await read();
+  await write({ ...prefs, lastSelection: selection });
 };

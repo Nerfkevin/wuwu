@@ -4,10 +4,10 @@ import { AudioContext } from '@/lib/audio-api-core';
 export const { height } = Dimensions.get('window');
 
 export const TRACK_GAP_MS = 5000;
-export const BOWL_VOLUME = 0.5;
+export const BOWL_VOLUME = 0.7;
 export const BOWL_CROSSFADE_DURATION = 0.8; // seconds of overlap at each loop boundary
 export const BINAURAL_CARRIER = 200;
-export const OSC_VOLUME = 0.5;
+export const OSC_VOLUME = 0.7;
 export const AFFIRMATION_DEFAULT_VOLUME_PERCENT = 50;
 export const AFFIRMATION_MAX_GAIN = 1;
 export const AMBIENT_VOLUME = 1.2;

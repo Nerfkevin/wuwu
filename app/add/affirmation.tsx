@@ -33,7 +33,8 @@ export default function AffirmationScreen() {
   });
 
   const router = useRouter();
-  const params = useLocalSearchParams<{ pillar?: string }>();
+  const params = useLocalSearchParams<{ pillar?: string; playlistId?: string }>();
+  const playlistId = normalizeParam(params.playlistId);
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
 
   const pillarKey = useMemo(() => {
@@ -53,7 +54,11 @@ export default function AffirmationScreen() {
     }
     router.push({
       pathname: '/add/recording',
-      params: { text: selectedMessage, pillar: pillarKey },
+      params: {
+        text: selectedMessage,
+        pillar: pillarKey,
+        ...(playlistId ? { playlistId } : {}),
+      },
     });
   };
 

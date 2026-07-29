@@ -32,7 +32,7 @@ export default function WriteScreen() {
   });
 
   const router = useRouter();
-  const { pillar } = useLocalSearchParams();
+  const { pillar, playlistId } = useLocalSearchParams<{ pillar?: string; playlistId?: string }>();
   const [text, setText] = useState('');
   const [glowState, setGlowState] = useState<GlowEvent>('default');
   const ctaAnimation = useRef(new Animated.Value(0)).current;
@@ -59,7 +59,11 @@ export default function WriteScreen() {
     }).start(() => {
       router.push({
         pathname: '/add/recording',
-        params: { text: text.trim(), pillar },
+        params: {
+          text: text.trim(),
+          pillar,
+          ...(typeof playlistId === 'string' && playlistId ? { playlistId } : {}),
+        },
       });
       screenFade.setValue(1);
     });

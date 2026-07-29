@@ -234,6 +234,11 @@ export default function Screen12() {
     Linking.openSettings();
   };
 
+  const handleSkip = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    navigateTo("/(onboarding)/screen13");
+  };
+
   const pillText =
     permState === "denied"
       ? "you can enable microphone access in settings anytime to unlock voice affirmations"
@@ -290,8 +295,11 @@ export default function Screen12() {
         {permState === "denied" ? (
           <Animated.View style={[styles.footer, { opacity: fadeDeniedBelow }]}>
             <View style={styles.deniedActions}>
-              <ScalePressable onPress={handleOpenSettings} style={styles.settingsBtn}>
-                <Text style={styles.settingsBtnText}>open settings</Text>
+              <ScalePressable onPress={handleSkip} style={styles.ctaBtn}>
+                <Text style={styles.ctaText}>continue</Text>
+              </ScalePressable>
+              <ScalePressable onPress={handleOpenSettings} style={styles.settingsLink}>
+                <Text style={styles.settingsLinkText}>enable microphone in Settings</Text>
               </ScalePressable>
             </View>
           </Animated.View>
@@ -303,7 +311,7 @@ export default function Screen12() {
               disabled={permState === "granted"}
             >
               <Text style={styles.ctaText}>
-                {permState === "granted" ? "unlocked ✓" : "unlock your voice"}
+                {permState === "granted" ? "unlocked ✓" : "continue"}
               </Text>
             </ScalePressable>
           </Animated.View>
@@ -440,20 +448,18 @@ const styles = StyleSheet.create({
   deniedActions: {
     width: "100%",
     alignItems: "center",
+    gap: 14,
   },
-  settingsBtn: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    paddingVertical: isSmallDevice ? 15 : 18,
+  settingsLink: {
+    paddingVertical: 6,
     alignItems: "center",
-    width: "100%",
   },
-  settingsBtnText: {
-    color: "#0a000d",
-    fontSize: 17,
+  settingsLinkText: {
+    color: "rgba(255,255,255,0.45)",
+    fontSize: 13,
     fontFamily: Fonts.mono,
-    fontWeight: "700",
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
+    textDecorationLine: "underline",
   },
   // ── overlay ──
   overlay: {

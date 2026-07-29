@@ -52,6 +52,7 @@ import {
   configureBackgroundPlaybackAsync,
   configureMixedPlaybackAsync,
 } from '@/lib/audio-playback';
+import { ALL_PLAYLIST_ID, addRecordingToPlaylist } from '@/lib/playlist-store';
 import { usePostHog, usePostHogScreenViewed } from '@/lib/posthog';
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -113,7 +114,14 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
   });
   const ph = usePostHog();
   const router = useRouter();
-  const params = useLocalSearchParams<{ text?: string; pillar?: string; writeOwn?: string; onboarding?: string }>();
+  const params = useLocalSearchParams<{
+    text?: string;
+    pillar?: string;
+    writeOwn?: string;
+    onboarding?: string;
+    playlistId?: string;
+  }>();
+  const targetPlaylistId = normalizeParam(params.playlistId);
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(audioRecorder);
   const [dotCount, setDotCount] = useState(1);
@@ -831,11 +839,14 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
       }
     }
 
-    await saveRecordingToDevice({
+    const saved = await saveRecordingToDevice({
       sourceUri: uriToSave,
       text: message,
       pillar: pillarKey,
     });
+    if (targetPlaylistId && targetPlaylistId !== ALL_PLAYLIST_ID) {
+      await addRecordingToPlaylist(targetPlaylistId, saved.id);
+    }
     try {
       ph?.capture('recording_saved', {
         pillar: pillarKey,
@@ -844,6 +855,7 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
         has_reverb: effects.reverb,
         has_trim: hasTrimSelection,
         onboarding: params.onboarding === '1',
+        playlist_id: targetPlaylistId ?? ALL_PLAYLIST_ID,
       });
     } catch {}
     if (params.onboarding === '1') {

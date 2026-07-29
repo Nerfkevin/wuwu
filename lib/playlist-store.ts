@@ -8,6 +8,15 @@ export type Playlist = {
 
 export const ALL_PLAYLIST_ID = '__all__';
 
+/** In-memory so Library remounts after save still land on the active playlist tab. */
+let activeLibraryPlaylistId = ALL_PLAYLIST_ID;
+
+export const getActiveLibraryPlaylistId = () => activeLibraryPlaylistId;
+
+export const setActiveLibraryPlaylistId = (id: string) => {
+  activeLibraryPlaylistId = id;
+};
+
 const RECORDINGS_DIR = new Directory(Paths.document, 'recordings');
 const PLAYLISTS_FILE = new File(RECORDINGS_DIR, 'playlists.json');
 

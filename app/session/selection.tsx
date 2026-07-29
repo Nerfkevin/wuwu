@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import * as Haptics from 'expo-haptics';
 import {
   StyleSheet,
@@ -21,7 +21,12 @@ import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
 import { Colors, Fonts } from '@/constants/theme';
 import { GlowPresets } from '@/constants/glow';
 import { getPlaylists, Playlist, ALL_PLAYLIST_ID } from '@/lib/playlist-store';
-import { getLastPlaylistId, setLastPlaylistId } from '@/lib/session-prefs';
+import {
+  getLastPlaylistId,
+  setLastPlaylistId,
+  getLastSessionSelection,
+  setLastSessionSelection,
+} from '@/lib/session-prefs';
 import { useFrequencyPreview } from '@/lib/use-frequency-preview';
 import { usePostHog, usePostHogScreenViewed } from '@/lib/posthog';
 
@@ -159,8 +164,9 @@ export default function SelectionScreen() {
   const router = useRouter();
   const [selectedBowlFreq, setSelectedBowlFreq] = useState('528');
   const [selectedPureFreq, setSelectedPureFreq] = useState('528');
-  const [selectedBg, setSelectedBg] = useState('Brainwaves');
+  const [selectedBg, setSelectedBg] = useState('Singing Bowl');
   const [selectedBrainwave, setSelectedBrainwave] = useState('alpha');
+  const selectionHydrated = useRef(false);
 
   const activeFreq = selectedBg === 'Singing Bowl' ? selectedBowlFreq : selectedPureFreq;
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
@@ -168,6 +174,32 @@ export default function SelectionScreen() {
   const [chosenPlaylistId, setChosenPlaylistId] = useState<string>(ALL_PLAYLIST_ID);
   const { previewFrequency, previewBrainwave, stopPreview, fadeOutPreview } = useFrequencyPreview();
   const continueBtnScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const last = await getLastSessionSelection();
+      if (cancelled) return;
+      if (last) {
+        if (BACKGROUNDS.includes(last.bg)) setSelectedBg(last.bg);
+        if (FREQUENCIES.some(f => f.id === last.bowlFreq)) setSelectedBowlFreq(last.bowlFreq);
+        if (FREQUENCIES.some(f => f.id === last.pureFreq)) setSelectedPureFreq(last.pureFreq);
+        if (BRAINWAVES.some(b => b.id === last.brainwave)) setSelectedBrainwave(last.brainwave);
+      }
+      selectionHydrated.current = true;
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!selectionHydrated.current) return;
+    void setLastSessionSelection({
+      bg: selectedBg,
+      bowlFreq: selectedBowlFreq,
+      pureFreq: selectedPureFreq,
+      brainwave: selectedBrainwave,
+    });
+  }, [selectedBg, selectedBowlFreq, selectedPureFreq, selectedBrainwave]);
 
   const renderFreqItem = ({ item }: { item: typeof FREQUENCIES[0] }) => {
     const setter = selectedBg === 'Singing Bowl' ? setSelectedBowlFreq : setSelectedPureFreq;

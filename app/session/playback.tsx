@@ -53,8 +53,8 @@ export default function PlaybackScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const statsRecordedRef = useRef(false);
-  const { text, freq, bg, brainwave, color } = useLocalSearchParams<{
-    text?: string; freq?: string; bg?: string; brainwave?: string; color?: string;
+  const { text, freq, bg, brainwave, color, playlistId } = useLocalSearchParams<{
+    text?: string; freq?: string; bg?: string; brainwave?: string; color?: string; playlistId?: string;
   }>();
   const insets = useSafeAreaInsets();
   const [glowState, setGlowState] = useState<GlowEvent>('default');
@@ -92,6 +92,7 @@ export default function PlaybackScreen() {
     shouldPlaySingingBowl,
     shouldPlayBrainwave,
     shouldPlayPure,
+    playlistId: typeof playlistId === 'string' ? playlistId : undefined,
   });
 
   useEffect(() => {
