@@ -4,6 +4,7 @@ export type SavedRecording = {
   id: string;
   text: string;
   pillar: string;
+  /** Absolute file:// URI (resolved against current Documents on read). */
   uri: string;
   createdAt: number;
 };
@@ -21,23 +22,59 @@ const ensureStorage = () => {
   }
 };
 
+const isAbsoluteUri = (uri: string) =>
+  uri.startsWith('file://') || uri.startsWith('/');
+
+const filenameFromUri = (uri: string) => {
+  const clean = uri.split('?')[0];
+  const parts = clean.split('/');
+  return parts[parts.length - 1] || uri;
+};
+
+/** Persist relative filenames so App Store / TestFlight container UUID changes don't break playback. */
+const toRelativeUri = (uri: string) => {
+  if (!uri) return uri;
+  return isAbsoluteUri(uri) ? filenameFromUri(uri) : uri;
+};
+
+const toAbsoluteUri = (uri: string) => {
+  const filename = toRelativeUri(uri);
+  return new File(RECORDINGS_DIR, filename).uri;
+};
+
+const recordingFile = (uri: string) => new File(RECORDINGS_DIR, toRelativeUri(uri));
+
+const writeIndex = (items: SavedRecording[]) => {
+  ensureStorage();
+  const relative = items.map((item) => ({
+    ...item,
+    uri: toRelativeUri(item.uri),
+  }));
+  RECORDINGS_INDEX_FILE.write(JSON.stringify(relative));
+};
+
 const readIndex = async () => {
   ensureStorage();
   try {
     const raw = await RECORDINGS_INDEX_FILE.text();
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return parsed as SavedRecording[];
+    if (!Array.isArray(parsed)) {
+      return [];
     }
-    return [];
+    const items = parsed as SavedRecording[];
+
+    // One-shot migration: absolute paths → relative filenames on disk
+    if (items.some((item) => item.uri && isAbsoluteUri(item.uri))) {
+      writeIndex(items);
+    }
+
+    return items.map((item) => ({
+      ...item,
+      uri: toAbsoluteUri(item.uri),
+    }));
   } catch {
     return [];
   }
-};
-
-const writeIndex = (items: SavedRecording[]) => {
-  ensureStorage();
-  RECORDINGS_INDEX_FILE.write(JSON.stringify(items));
 };
 
 const getFileExtension = (uri: string) => {
@@ -71,7 +108,8 @@ export const saveRecordingToDevice = async ({
   ensureStorage();
   const id = `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
   const extension = getFileExtension(sourceUri);
-  const destination = new File(RECORDINGS_DIR, `${id}.${extension}`);
+  const filename = `${id}.${extension}`;
+  const destination = new File(RECORDINGS_DIR, filename);
   const sourceFile = new File(normalizeFileUri(sourceUri));
   sourceFile.copy(destination);
 
@@ -79,13 +117,13 @@ export const saveRecordingToDevice = async ({
     id,
     text,
     pillar,
-    uri: destination.uri,
+    uri: filename,
     createdAt: Date.now(),
   };
 
   const current = await readIndex();
   writeIndex([entry, ...current]);
-  return entry;
+  return { ...entry, uri: toAbsoluteUri(filename) };
 };
 
 export const getSavedRecordings = async () => {
@@ -110,7 +148,10 @@ export const reorderSavedRecordings = async (orderedIds: string[]) => {
   }
 
   writeIndex(reordered);
-  return reordered;
+  return reordered.map((item) => ({
+    ...item,
+    uri: toAbsoluteUri(item.uri),
+  }));
 };
 
 export const getSavedRecordingById = async (id: string) => {
@@ -122,7 +163,7 @@ export const clearAllRecordings = async () => {
   const items = await readIndex();
   for (const item of items) {
     if (item.uri) {
-      const f = new File(normalizeFileUri(item.uri));
+      const f = recordingFile(item.uri);
       if (f.exists) f.delete();
     }
   }
@@ -136,7 +177,7 @@ export const deleteSavedRecording = async (id: string) => {
   writeIndex(next);
 
   if (target?.uri) {
-    const targetFile = new File(normalizeFileUri(target.uri));
+    const targetFile = recordingFile(target.uri);
     if (targetFile.exists) {
       targetFile.delete();
     }

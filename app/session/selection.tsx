@@ -460,7 +460,7 @@ export default function SelectionScreen() {
             />
 
             <TouchableOpacity style={styles.startBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleStartWithPlaylist(); }}>
-              <Text style={styles.startBtnText}>start manifesting</Text>
+              <Text style={styles.startBtnText}>continue</Text>
             </TouchableOpacity>
           </Pressable>
         </Pressable>

@@ -1,5 +1,5 @@
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -10,6 +10,10 @@ import {
   Platform,
   Dimensions,
   Alert,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Pressable,
 } from 'react-native';
 import { RecordingMicModal } from '@/components/RecordingMicModal';
 import { getRecordingMicPref } from '@/lib/recording-mic-preference';
@@ -18,8 +22,17 @@ import { useFocusEffect } from '@react-navigation/native';
 import * as SecureStore from 'expo-secure-store';
 import { getSavedRecordings, clearAllRecordings } from '@/lib/recording-store';
 import { formatPlayTime, getProfileStats, clearProfileStats } from '@/lib/profile-stats';
-import * as StoreReview from 'expo-store-review';
-import { useRouter } from 'expo-router';
+import {
+  clearStoreReviewPromptState,
+  markStoreReviewCompleted,
+} from '@/lib/store-review-prompt';
+import {
+  ADMIN_TAP_THRESHOLD,
+  isAdminUnlocked,
+  setAdminUnlocked,
+  verifyAdminPassword,
+} from '@/lib/admin-settings';
+import { useRouter, type Href } from 'expo-router';
 import {
   openBrowserAsync,
   WebBrowserPresentationStyle,
@@ -28,6 +41,7 @@ import { Colors, Fonts, Layout } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { usePostHog, usePostHogScreenViewed } from '@/lib/posthog';
 import { ScalePressable } from '@/components/ScalePressable';
+import * as Haptics from 'expo-haptics';
 
 const { width: screenWidth } = Dimensions.get('window');
 const isSmallDevice = screenWidth < 380;
@@ -35,7 +49,19 @@ const isSmallDevice = screenWidth < 380;
 const TERMS_URL = 'https://98goats.com/wuwu/terms';
 const PRIVACY_URL = 'https://98goats.com/wuwu/privacy';
 const SUPPORT_EMAIL = 'hello@98goats.com';
+const IOS_APP_STORE_ID = '6760009072';
 const ANDROID_PACKAGE = 'com.nerfkevin.wuwu';
+
+/** Explicit review CTA — open store write-review page (requestReview is unreliable for buttons). */
+function getLeaveReviewUrl(): string | null {
+  if (Platform.OS === 'ios') {
+    return `https://apps.apple.com/app/id${IOS_APP_STORE_ID}?action=write-review`;
+  }
+  if (Platform.OS === 'android') {
+    return `https://play.google.com/store/apps/details?id=${ANDROID_PACKAGE}`;
+  }
+  return null;
+}
 
 async function openInAppBrowser(url: string) {
   await openBrowserAsync(url, {
@@ -44,24 +70,10 @@ async function openInAppBrowser(url: string) {
 }
 
 async function openLeaveReview() {
-  try {
-    if (await StoreReview.hasAction()) {
-      await StoreReview.requestReview();
-      return;
-    }
-  } catch {
-    /* native review may fail in dev */
-  }
-  const store = StoreReview.storeUrl();
-  if (store) {
-    await Linking.openURL(store);
-    return;
-  }
-  if (Platform.OS === 'android') {
-    const play =
-      `https://play.google.com/store/apps/details?id=${ANDROID_PACKAGE}`;
-    await Linking.openURL(play);
-  }
+  const url = getLeaveReviewUrl();
+  if (!url) return;
+  await markStoreReviewCompleted();
+  await Linking.openURL(url);
 }
 
 const defaultBuiltInMicLabel =
@@ -83,6 +95,12 @@ export default function ProfileScreen() {
   const [recordedCount, setRecordedCount] = useState('0');
   const [micModalOpen, setMicModalOpen] = useState(false);
   const [micSummary, setMicSummary] = useState<string | null>(null);
+  const [adminUnlocked, setAdminUnlockedState] = useState(false);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState(false);
+  const adminTapCountRef = useRef(0);
+  const adminTapResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -92,7 +110,8 @@ export default function ProfileScreen() {
         getProfileStats(),
         getSavedRecordings(),
         getRecordingMicPref(),
-      ]).then(([n, stats, recordings, micPref]) => {
+        isAdminUnlocked(),
+      ]).then(([n, stats, recordings, micPref, unlocked]) => {
         if (cancelled) return;
         setUserName(n);
         const pt = formatPlayTime(stats.totalPlayMs);
@@ -101,12 +120,45 @@ export default function ProfileScreen() {
         setSessionCount(String(stats.sessionCount));
         setRecordedCount(String(recordings.length));
         setMicSummary(micPref?.name ?? null);
+        setAdminUnlockedState(unlocked);
       });
       return () => {
         cancelled = true;
       };
     }, [])
   );
+
+  const handleRecordedSecretTap = () => {
+    if (adminUnlocked) return;
+    if (adminTapResetRef.current) clearTimeout(adminTapResetRef.current);
+    adminTapCountRef.current += 1;
+    if (adminTapCountRef.current >= ADMIN_TAP_THRESHOLD) {
+      adminTapCountRef.current = 0;
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setPasswordInput('');
+      setPasswordError(false);
+      setPasswordModalOpen(true);
+      return;
+    }
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    adminTapResetRef.current = setTimeout(() => {
+      adminTapCountRef.current = 0;
+    }, 1500);
+  };
+
+  const handlePasswordSubmit = async () => {
+    if (!verifyAdminPassword(passwordInput)) {
+      setPasswordError(true);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+    await setAdminUnlocked(true);
+    setAdminUnlockedState(true);
+    setPasswordModalOpen(false);
+    setPasswordInput('');
+    setPasswordError(false);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
 
   const greeting = userName?.trim()
     ? `Hi, ${userName.trim()}`
@@ -118,6 +170,7 @@ export default function ProfileScreen() {
       await Promise.all([
         clearAllRecordings(),
         clearProfileStats(),
+        clearStoreReviewPromptState(),
         SecureStore.deleteItemAsync('onboarding_completed'),
         SecureStore.deleteItemAsync('streak_count'),
         SecureStore.deleteItemAsync('streak_last_date'),
@@ -126,7 +179,6 @@ export default function ProfileScreen() {
       router.replace('/(onboarding)/screen1');
     } catch {
       setClearing(false);
-      setConfirmClear(false);
     }
   };
 
@@ -165,7 +217,9 @@ export default function ProfileScreen() {
         <View style={[styles.statSide, styles.statSideRight]}>
           <View style={styles.statItem}>
             <Text style={styles.statNumber}>{recordedCount}</Text>
-            <Text style={styles.statLabel}>Recorded</Text>
+            <Pressable onPress={handleRecordedSecretTap} hitSlop={12}>
+              <Text style={styles.statLabel}>Recorded</Text>
+            </Pressable>
           </View>
         </View>
       </View>
@@ -192,7 +246,85 @@ export default function ProfileScreen() {
         onApplied={(summary) => setMicSummary(summary)}
       />
 
+      <Modal
+        visible={passwordModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPasswordModalOpen(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.passwordOverlay}
+        >
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setPasswordModalOpen(false)}
+          />
+          <View style={styles.passwordCard}>
+            <Text style={styles.passwordTitle}>Admin Access</Text>
+            <Text style={styles.passwordSubtitle}>Enter password</Text>
+            <TextInput
+              style={[styles.passwordInput, passwordError && styles.passwordInputError]}
+              value={passwordInput}
+              onChangeText={(t) => {
+                setPasswordInput(t);
+                setPasswordError(false);
+              }}
+              secureTextEntry
+              autoFocus
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="done"
+              onSubmitEditing={() => void handlePasswordSubmit()}
+              placeholder="Password"
+              placeholderTextColor={Colors.textSecondary}
+            />
+            {passwordError ? (
+              <Text style={styles.passwordErrorText}>Incorrect password</Text>
+            ) : null}
+            <View style={styles.passwordActions}>
+              <ScalePressable
+                style={({ pressed }) => [
+                  styles.passwordBtn,
+                  styles.passwordBtnCancel,
+                  pressed && styles.rowPressed,
+                ]}
+                onPress={() => setPasswordModalOpen(false)}
+              >
+                <Text style={styles.passwordBtnCancelText}>Cancel</Text>
+              </ScalePressable>
+              <ScalePressable
+                style={({ pressed }) => [
+                  styles.passwordBtn,
+                  styles.passwordBtnSubmit,
+                  pressed && styles.rowPressed,
+                ]}
+                onPress={() => void handlePasswordSubmit()}
+              >
+                <Text style={styles.passwordBtnSubmitText}>Unlock</Text>
+              </ScalePressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       <View style={styles.section}>
+        {adminUnlocked ? (
+          <>
+            <ScalePressable
+              style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+              onPress={() => router.push('/admin/playback' as Href)}
+            >
+              <Text style={styles.rowTextFull}>Default Settings</Text>
+              <Ionicons
+                name="settings-outline"
+                size={20}
+                color={Colors.textSecondary}
+              />
+            </ScalePressable>
+            <View style={styles.divider} />
+          </>
+        ) : null}
         <ScalePressable
           style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
           onPress={() => void openInAppBrowser(PRIVACY_URL)}
@@ -387,5 +519,78 @@ const styles = StyleSheet.create({
     color: '#FF453A',
     flex: 1,
     marginLeft: 12,
+  },
+  passwordOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  passwordCard: {
+    borderRadius: Layout.borderRadius,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: '#1A1524',
+    padding: 22,
+  },
+  passwordTitle: {
+    fontFamily: Fonts.serif,
+    fontSize: 22,
+    color: Colors.text,
+    marginBottom: 4,
+  },
+  passwordSubtitle: {
+    fontFamily: Fonts.mono,
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginBottom: 16,
+  },
+  passwordInput: {
+    fontFamily: Fonts.mono,
+    fontSize: 16,
+    color: Colors.text,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  passwordInputError: {
+    borderColor: '#FF453A',
+  },
+  passwordErrorText: {
+    fontFamily: Fonts.mono,
+    fontSize: 12,
+    color: '#FF453A',
+    marginTop: 8,
+  },
+  passwordActions: {
+    flexDirection: 'row',
+    marginTop: 18,
+    gap: 10,
+  },
+  passwordBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  passwordBtnCancel: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  passwordBtnSubmit: {
+    backgroundColor: Colors.text,
+  },
+  passwordBtnCancelText: {
+    fontFamily: Fonts.mono,
+    fontSize: 14,
+    color: Colors.text,
+  },
+  passwordBtnSubmitText: {
+    fontFamily: Fonts.mono,
+    fontSize: 14,
+    color: '#000',
   },
 });

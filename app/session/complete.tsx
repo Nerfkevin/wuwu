@@ -14,6 +14,7 @@ import LottieView from 'lottie-react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Fonts } from '@/constants/theme';
 import { formatPlayTime } from '@/lib/profile-stats';
+import { maybeRequestReviewAfterSessions } from '@/lib/store-review-prompt';
 import { updateStreakOnSession } from '@/lib/streak-utils';
 import { createAudioPlayer } from '@/lib/expo-audio';
 import { usePostHogScreenViewed } from '@/lib/posthog';
@@ -110,6 +111,7 @@ export default function SessionCompleteScreen() {
     let player: ReturnType<typeof createAudioPlayer> | null = null;
     try {
       player = createAudioPlayer(require('@/assets/images/complete.mp3'));
+      player.volume = 0.5;
       soundRef.current = player;
     } catch {
       // audio unavailable
@@ -277,8 +279,12 @@ export default function SessionCompleteScreen() {
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
 
+        // Native review popup once after 2 sessions (skipped if already prompted / left a review)
+        await delay(1100);
+        void maybeRequestReviewAfterSessions(newSessions);
+
         // Phase 3: wait then fade out + dismiss
-        await delay(2200);
+        await delay(1100);
         Animated.timing(containerOpacity, {
           toValue: 0,
           duration: 600,

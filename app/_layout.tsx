@@ -15,12 +15,12 @@ import { SpaceMono_400Regular } from '@expo-google-fonts/space-mono';
 import { Colors, Fonts } from '@/constants/theme';
 import { NativeModules } from 'react-native';
 import { configureMixedPlaybackAsync } from '@/lib/audio-playback';
-import Superwall from '@superwall/react-native-superwall';
 import { AppPostHogProvider, usePostHog } from '@/lib/posthog-provider';
-import * as SecureStore from 'expo-secure-store';
-
-const SUPERWALL_API_KEY_IOS = 'pk_5L3AcVB9DaMbr9E9M79vc';
-const USER_UUID_KEY = 'app_user_uuid';
+import {
+  configureSuperwall,
+  identifySuperwallUser,
+  setupUserIdentity,
+} from '@/lib/user-identity';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -29,15 +29,13 @@ function UserIdentityManager() {
   const posthog = usePostHog();
 
   useEffect(() => {
+    if (!posthog) return;
+
     const identify = async () => {
       try {
-        let uuid = await SecureStore.getItemAsync(USER_UUID_KEY);
-        if (!uuid) {
-          uuid = crypto.randomUUID();
-          await SecureStore.setItemAsync(USER_UUID_KEY, uuid);
-        }
-        await Superwall.shared.identify({ userId: uuid });
-        posthog?.identify(uuid);
+        await configureSuperwall();
+        await identifySuperwallUser();
+        await setupUserIdentity(posthog);
       } catch (e) {
         console.log('[UserIdentityManager] error:', e);
       }
@@ -59,10 +57,6 @@ export default function RootLayout() {
   useEffect(() => {
     NativeModules.AudioAPIModule?.disableSessionManagement?.();
     void configureMixedPlaybackAsync();
-  }, []);
-
-  useEffect(() => {
-    Superwall.configure({ apiKey: SUPERWALL_API_KEY_IOS });
   }, []);
 
   if (!loaded) {
@@ -104,6 +98,7 @@ export default function RootLayout() {
           <Stack.Screen name="add/review" options={{ title: 'Review', headerShown: false, presentation: 'modal', gestureEnabled: false }} />
           <Stack.Screen name="session/complete" options={{ headerShown: false, presentation: 'transparentModal', animation: 'none' }} />
           <Stack.Screen name="streak" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'fade' }} />
+          <Stack.Screen name="admin/playback" options={{ headerShown: false, presentation: 'card', animation: 'fade' }} />
         </Stack>
         <StatusBar style="light" />
       </ThemeProvider>

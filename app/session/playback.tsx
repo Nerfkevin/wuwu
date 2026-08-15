@@ -20,7 +20,7 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-g
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import AffirmationCard from '../add/components/affirmation-card';
-import { AFFIRMATION_PILLARS, PillarKey } from '@/constants/affirmations';
+import { getPillarColor } from '@/constants/affirmations';
 import { Colors, Fonts } from '@/constants/theme';
 import { GlowPresets } from '@/constants/glow';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -110,10 +110,7 @@ export default function PlaybackScreen() {
   const hasTrackMessage = recordings.length > 0 && !!recordings[currentTrackIndex]?.text;
   const message = hasTrackMessage ? recordings[currentTrackIndex].text : fallbackMessage;
   const currentRecording = recordings[currentTrackIndex];
-  const messagePillarColor =
-    currentRecording?.pillar && currentRecording.pillar in AFFIRMATION_PILLARS
-      ? AFFIRMATION_PILLARS[currentRecording.pillar as PillarKey].color
-      : selectedColor;
+  const messagePillarColor = getPillarColor(currentRecording?.pillar, selectedColor);
 
   // ─── Animation state ──────────────────────────────────────────────────────
   const volumeProgress = useSharedValue(AFFIRMATION_DEFAULT_VOLUME_PERCENT / 100);

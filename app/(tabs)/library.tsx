@@ -24,7 +24,7 @@ import type { AudioPlayer } from '@/lib/expo-audio';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import SwipeableItem, { useSwipeableItemParams } from 'react-native-swipeable-item';
 import { getSavedRecordings, reorderSavedRecordings, deleteSavedRecording, SavedRecording } from '@/lib/recording-store';
-import { AFFIRMATION_PILLARS } from '@/constants/affirmations';
+import { getPillarColor, getPillarLabel } from '@/constants/affirmations';
 import {
   activateLockScreenControls,
   clearLockScreenControls,
@@ -370,9 +370,7 @@ export default function LibraryScreen() {
   );
 
   const renderItem = ({ item, drag, isActive }: RenderItemParams<SavedRecording>) => {
-    const glowColor =
-      AFFIRMATION_PILLARS[item.pillar as keyof typeof AFFIRMATION_PILLARS]?.color ??
-      Colors.chakra.violet;
+    const glowColor = getPillarColor(item.pillar);
     const isHoldActive = activeDragId === item.id || pressedHandleId === item.id;
 
     return (
@@ -418,7 +416,7 @@ export default function LibraryScreen() {
                   </View>
                   <View style={styles.cardTextContainer}>
                     <Text style={styles.cardTitle}>{item.text}</Text>
-                    <Text style={styles.cardSubtitle}>{item.pillar}</Text>
+                    <Text style={styles.cardSubtitle}>{getPillarLabel(item.pillar)}</Text>
                   </View>
                   <View style={styles.cardMeta}>
                     <ScalePressable

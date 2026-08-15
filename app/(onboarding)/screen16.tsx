@@ -12,7 +12,6 @@ import { MeshGradientView } from "expo-mesh-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import * as SecureStore from "expo-secure-store";
-import * as StoreReview from "expo-store-review";
 import LottieView from "lottie-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Fonts } from "@/constants/theme";
@@ -274,11 +273,6 @@ export default function Screen16() {
       }).start();
 
       setTimeout(() => lottieRef.current?.play(), 200);
-
-      await delay(1100);
-      if (await StoreReview.isAvailableAsync()) {
-        StoreReview.requestReview();
-      }
     };
 
     run();

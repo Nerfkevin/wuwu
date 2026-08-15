@@ -16,7 +16,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import AffirmationCard from '../add/components/affirmation-card';
-import { AFFIRMATION_PILLARS, PillarKey } from '@/constants/affirmations';
+import { getPillarColor } from '@/constants/affirmations';
 import { Colors, Fonts } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -135,10 +135,7 @@ export default function Screen15() {
 
   const currentRecording = recordings[currentTrackIndex];
   const message = currentRecording?.text ?? '';
-  const messagePillarColor =
-    currentRecording?.pillar && currentRecording.pillar in AFFIRMATION_PILLARS
-      ? AFFIRMATION_PILLARS[currentRecording.pillar as PillarKey].color
-      : selectedColor;
+  const messagePillarColor = getPillarColor(currentRecording?.pillar, selectedColor);
 
   const hasAbundance = recordings.some((r) => r.pillar === 'Abundance');
 

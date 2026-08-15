@@ -17,7 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { createAudioPlayer, type AudioPlayer } from '@/lib/expo-audio';
-import { AFFIRMATION_PILLARS } from '@/constants/affirmations';
+import { getPillarColor } from '@/constants/affirmations';
 import * as Haptics from 'expo-haptics';
 import { Colors, Fonts } from '@/constants/theme';
 import AffirmationCard from './components/affirmation-card';
@@ -242,9 +242,7 @@ export default function LibraryRecordingScreen() {
     (p) => !p.recordingIds.includes(recording?.id ?? '')
   );
 
-  const pillarColor =
-    AFFIRMATION_PILLARS[recording?.pillar as keyof typeof AFFIRMATION_PILLARS]?.color ??
-    Colors.chakra.violet;
+  const pillarColor = getPillarColor(recording?.pillar);
 
   return (
     <View style={styles.container}>
@@ -263,7 +261,7 @@ export default function LibraryRecordingScreen() {
 
       <View style={styles.content}>
         <View style={styles.cardGlowWrapper}>
-          <AffirmationCard glowColor={pillarColor}>
+          <AffirmationCard glowColor={pillarColor} borderColor={pillarColor}>
             <Text style={styles.affirmationText}>
               {`"${recording?.text ?? 'Recording not found.'}"`}
             </Text>

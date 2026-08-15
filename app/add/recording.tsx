@@ -32,7 +32,7 @@ import {
 } from '@/lib/expo-audio';
 import type { AudioPlayer } from '@/lib/expo-audio';
 import { AudioBuffer, AudioContext } from '@/lib/audio-api-core';
-import { AFFIRMATION_PILLARS, PillarKey } from '@/constants/affirmations';
+import { AFFIRMATION_PILLARS, PillarKey, WRITE_OWN_COLOR, WRITE_OWN_PILLAR, isWriteOwnPillar } from '@/constants/affirmations';
 import { Colors, Fonts } from '@/constants/theme';
 import AnimatedGlow, { GlowEvent } from '@/lib/animated-glow';
 import { GlowPresets } from '@/constants/glow';
@@ -169,7 +169,9 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
   const pausedPositionRef = useRef(0);
   const previewSourceKeyRef = useRef('');
   const initialText = typeof params.text === 'string' ? params.text.trim() : '';
-  const shouldStartInCompose = initialText.length === 0 || normalizeParam(params.writeOwn) === '1';
+  const isWriteOwn =
+    normalizeParam(params.writeOwn) === '1' || isWriteOwnPillar(normalizeParam(params.pillar));
+  const shouldStartInCompose = initialText.length === 0 || isWriteOwn;
   const [draftMessage, setDraftMessage] = useState(initialText);
   const [finalMessage, setFinalMessage] = useState(
     initialText.length > 0 ? initialText : 'I am calm, grounded, and confident in who I am.'
@@ -188,6 +190,8 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
   }, [params.pillar]);
 
   const pillar = AFFIRMATION_PILLARS[pillarKey];
+  const savedPillar = isWriteOwn ? WRITE_OWN_PILLAR : pillarKey;
+  const cardColor = isWriteOwn ? WRITE_OWN_COLOR : pillar.color;
   const message = finalMessage;
   const recordingOpacity = transition.interpolate({
     inputRange: [0, 1],
@@ -842,14 +846,14 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
     const saved = await saveRecordingToDevice({
       sourceUri: uriToSave,
       text: message,
-      pillar: pillarKey,
+      pillar: savedPillar,
     });
     if (targetPlaylistId && targetPlaylistId !== ALL_PLAYLIST_ID) {
       await addRecordingToPlaylist(targetPlaylistId, saved.id);
     }
     try {
       ph?.capture('recording_saved', {
-        pillar: pillarKey,
+        pillar: savedPillar,
         has_enhance: effects.enhance,
         has_echo: effects.echo,
         has_reverb: effects.reverb,
@@ -930,7 +934,7 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
 
       <View style={styles.content}>
         <View style={styles.cardGlowWrapper}>
-          <AffirmationCard glowColor={pillar.color} borderColor={pillar.color}>
+          <AffirmationCard glowColor={cardColor} borderColor={cardColor}>
             {isComposing ? (
               <TextInput
                 style={styles.messageInput}

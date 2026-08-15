@@ -16,6 +16,7 @@
     "react-native-audio-api-globals.d.ts"
   ],
   "exclude": [
-    "Repent/**"
+    "Repent/**",
+    "speaketh/**"
   ]
 }

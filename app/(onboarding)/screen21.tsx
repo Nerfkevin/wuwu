@@ -20,6 +20,7 @@ import Superwall, {
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
 import { usePostHog, usePostHogScreenViewed } from "@/lib/posthog";
+import { identifySuperwallUser } from "@/lib/user-identity";
 import { ScalePressable } from "@/components/ScalePressable";
 
 const ONBOARDING_KEY = "onboarding_completed";
@@ -196,6 +197,7 @@ export default function Screen21() {
     });
 
     try {
+      await identifySuperwallUser();
       await Superwall.shared.register({ placement: "campaign_trigger", handler });
     } catch (e) {
       console.log("[Screen21] Paywall register error:", e);

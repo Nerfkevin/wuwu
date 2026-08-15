@@ -163,6 +163,12 @@ export default function AmbientModal({
     });
 
   const handleTilePress = (id: AmbientSoundId) => {
+    // Already-on tile that's not focused: land on it first so the volume slider
+    // shows, don't toggle it off until a second press.
+    if (activeAmbientSounds.has(id) && focusedId !== id) {
+      setFocusedId(id);
+      return;
+    }
     setFocusedId(id);
     if (id === 'money' && !activeAmbientSounds.has(id) && ambientVolumes[id] === undefined) {
       onAmbientVolumeChange(id, 0.2);

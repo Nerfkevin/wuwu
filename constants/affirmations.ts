@@ -8,6 +8,22 @@ export type PillarKey =
   | 'Peace'
   | 'Focus';
 
+export const WRITE_OWN_PILLAR = 'Wu-Wu';
+export const WRITE_OWN_COLOR = '#FFFFFF';
+
+export const isWriteOwnPillar = (pillar?: string | null) => pillar === WRITE_OWN_PILLAR;
+
+export const getPillarColor = (pillar?: string | null, fallback = Colors.chakra.violet) => {
+  if (isWriteOwnPillar(pillar)) return WRITE_OWN_COLOR;
+  if (pillar && pillar in AFFIRMATION_PILLARS) {
+    return AFFIRMATION_PILLARS[pillar as PillarKey].color;
+  }
+  return fallback;
+};
+
+export const getPillarLabel = (pillar?: string | null) =>
+  isWriteOwnPillar(pillar) ? WRITE_OWN_PILLAR : (pillar ?? WRITE_OWN_PILLAR);
+
 export const AFFIRMATION_PILLARS: Record<
   PillarKey,
   { title: string; icon: string; color: string; messages: string[] }

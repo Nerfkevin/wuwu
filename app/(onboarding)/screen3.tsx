@@ -18,6 +18,7 @@ import * as SecureStore from "expo-secure-store";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
 import { usePostHog, usePostHogScreenViewed } from "@/lib/posthog";
+import { identifySuperwallUser, setupUserIdentity } from "@/lib/user-identity";
 import { ScalePressable } from "@/components/ScalePressable";
 
 const { width } = Dimensions.get("window");
@@ -160,8 +161,8 @@ export default function Screen3() {
     Keyboard.dismiss();
     await SecureStore.setItemAsync("user_name", name.trim());
     try {
-      const uuid = await SecureStore.getItemAsync('app_user_uuid');
-      if (uuid) ph?.identify(uuid, { name: name.trim() });
+      await setupUserIdentity(ph);
+      await identifySuperwallUser();
       ph?.capture('onboarding_name_set', { component: 'Screen3' });
       void ph?.flush();
     } catch {}

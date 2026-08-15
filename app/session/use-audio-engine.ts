@@ -6,7 +6,6 @@ import * as Haptics from 'expo-haptics';
 import { getSavedRecordings, SavedRecording } from '@/lib/recording-store';
 import { ALL_PLAYLIST_ID, getPlaylists } from '@/lib/playlist-store';
 import {
-  TRACK_GAP_MS,
   BOWL_VOLUME,
   BINAURAL_CARRIER,
   OSC_VOLUME,
@@ -21,6 +20,11 @@ import {
   AmbientNode,
   affirmationPercentToGain,
 } from './playback-constants';
+import {
+  DEFAULT_START_DELAY_SEC,
+  DEFAULT_TRACK_GAP_SEC,
+  getAdminPlaybackSettings,
+} from '@/lib/admin-settings';
 
 const getAmbientGainMul = (id: AmbientSoundId) => {
   if (NOISE_IDS.has(id)) return NOISE_AMBIENT_GAIN_MULTIPLIER;
@@ -76,6 +80,8 @@ export function useAudioEngine({
   const affirmationVolumeRef = useRef(affirmationPercentToGain(AFFIRMATION_DEFAULT_VOLUME_PERCENT));
   const hasStartedFirstAffirmationRef = useRef(false);
   const firstAffirmationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const trackGapMsRef = useRef(DEFAULT_TRACK_GAP_SEC * 1000);
+  const startDelayMsRef = useRef(DEFAULT_START_DELAY_SEC * 1000);
   const ambientVolumesRef = useRef<Partial<Record<AmbientSoundId, number>>>({});
   const sessionElapsedMsRef = useRef(0);
   const sessionStartedAtRef = useRef<number | null>(null);
@@ -460,7 +466,7 @@ export function useAudioEngine({
           await audioCtxRef.current?.resume();
           await playAffirmation(nextIndex);
         })();
-      }, TRACK_GAP_MS);
+      }, trackGapMsRef.current);
     };
     source.start();
     affirmationSourceRef.current = source;
@@ -535,6 +541,11 @@ export function useAudioEngine({
       isPlayingRef.current = false;
       return;
     }
+    try {
+      const settings = await getAdminPlaybackSettings();
+      trackGapMsRef.current = settings.trackGapSec * 1000;
+      startDelayMsRef.current = settings.startDelaySec * 1000;
+    } catch { /* keep existing refs */ }
     const ctx = ensureAudioContext();
     const activeIds = [...activeAmbientSoundsRef.current] as AmbientSoundId[];
     await Promise.all([
@@ -570,7 +581,7 @@ export function useAudioEngine({
             void startAffirmationPlayback(currentTrackIndexRef.current).catch((e) => {
               console.warn('[audio-engine] Affirmation playback start failed:', e);
             });
-          }, 3000);
+          }, startDelayMsRef.current);
         } else {
           await startAffirmationPlayback(currentTrackIndexRef.current);
         }
@@ -631,6 +642,14 @@ export function useAudioEngine({
     });
     return () => sub.remove();
   }, [isPlaying]);
+
+  // Load admin timing overrides (gap between tracks + first-affirmation delay)
+  useEffect(() => {
+    void getAdminPlaybackSettings().then((settings) => {
+      trackGapMsRef.current = settings.trackGapSec * 1000;
+      startDelayMsRef.current = settings.startDelaySec * 1000;
+    });
+  }, []);
 
   // Load saved affirmation volume on mount
   useEffect(() => {

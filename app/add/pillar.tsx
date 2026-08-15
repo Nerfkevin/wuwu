@@ -11,8 +11,10 @@ import { GlowPresets } from '@/constants/glow';
 import { usePostHogScreenViewed } from '@/lib/posthog';
 import { ScalePressable } from '@/components/ScalePressable';
 
-const { width: screenWidth } = Dimensions.get('window');
-const isSmallDevice = screenWidth < 380;
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const isSmallDevice = screenWidth < 380 || screenHeight < 720;
+const CARD_ICON_SIZE = isSmallDevice ? 26 : 34;
+const ROW_GAP = isSmallDevice ? 12 : 30;
 
 type PillarItem = {
   id: string;
@@ -110,7 +112,7 @@ function PillarCard({
             onPressOut={handlePressOut}
           >
             <View style={styles.cardContent}>
-              <Ionicons name={item.icon} size={34} color={iconColor} style={styles.cardIcon} />
+              <Ionicons name={item.icon} size={CARD_ICON_SIZE} color={iconColor} style={styles.cardIcon} />
               <Text style={[styles.cardTitle, { color: titleColor }]}>{item.title}</Text>
             </View>
           </Pressable>
@@ -143,7 +145,7 @@ export default function PillarScreen() {
       router.push({
         pathname: '/add/recording',
         params: {
-          pillar: selectedPillar ?? 'Confidence',
+          pillar: 'Wu-Wu',
           writeOwn: '1',
           ...(playlistId ? { playlistId } : {}),
         },
@@ -280,7 +282,7 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   titleBlock: {
-    marginBottom: 20,
+    marginBottom: isSmallDevice ? 10 : 20,
   },
   titleRow: {
     flexDirection: 'row',
@@ -318,7 +320,7 @@ const styles = StyleSheet.create({
   },
   row: {
     justifyContent: 'space-between',
-    marginBottom: 30,
+    marginBottom: ROW_GAP,
     overflow: 'visible',
   },
   cardWrapper: {
@@ -328,37 +330,37 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    minHeight: isSmallDevice ? 90 : 108,
+    minHeight: isSmallDevice ? 72 : 108,
     backgroundColor: 'transparent',
     borderRadius: 20,
     borderWidth: 1,
     paddingHorizontal: 8,
-    paddingVertical: 12,
+    paddingVertical: isSmallDevice ? 8 : 12,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'visible',
   },
   cardContent: {
     width: '100%',
-    minHeight: 84,
+    minHeight: isSmallDevice ? 56 : 84,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 6,
-    paddingVertical: 6,
-    gap: 8,
+    paddingVertical: isSmallDevice ? 2 : 6,
+    gap: isSmallDevice ? 4 : 8,
   },
   cardIcon: {
     marginBottom: 2,
   },
   cardTitle: {
     fontFamily: Fonts.mono,
-    fontSize: 12,
+    fontSize: isSmallDevice ? 11 : 12,
     color: Colors.text,
     textAlign: 'center',
   },
   bottomSection: {
-    gap: 12,
-    paddingBottom: 40,
+    gap: isSmallDevice ? 10 : 12,
+    paddingBottom: isSmallDevice ? 28 : 40,
   },
   writeOwnButton: {
     flexDirection: 'row',
@@ -368,7 +370,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: Colors.textSecondary,
-    paddingVertical: 14,
+    paddingVertical: isSmallDevice ? 10 : 14,
     marginHorizontal: 40,
   },
   writeOwnButtonSelected: {

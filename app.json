@@ -11,6 +11,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.kevinngo03.wuwu",
+      "appStoreUrl": "https://apps.apple.com/app/id6760009072",
       "infoPlist": {
         "SKIncludeConsumableInAppPurchaseHistory": true
       }
@@ -21,6 +22,7 @@
         "backgroundColor": "#111111"
       },
       "package": "com.nerfkevin.wuwu",
+      "playStoreUrl": "https://play.google.com/store/apps/details?id=com.nerfkevin.wuwu",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },

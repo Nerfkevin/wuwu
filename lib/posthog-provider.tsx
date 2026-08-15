@@ -23,6 +23,7 @@ export function AppPostHogProvider({ children }: { children: ReactNode }) {
         flushAt: IS_DEBUG ? 1 : 20,
         flushInterval: IS_DEBUG ? 1000 : 30000,
         captureAppLifecycleEvents: true,
+        personProfiles: 'identified_only',
       }}
       autocapture={{
         captureScreens: false,
