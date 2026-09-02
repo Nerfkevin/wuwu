@@ -69,6 +69,8 @@
       [
         "expo-notifications",
         {
+          "color": "#111111",
+          "defaultChannel": "daily-reminders",
           "enableBackgroundRemoteNotifications": false
         }
       ],

@@ -54,7 +54,9 @@ export default function GradientSnapSlider({
     const range = maximumValue - minimumValue;
     const raw = minimumValue + rawRatio * range;
     const snapped = Math.round((raw - minimumValue) / step) * step + minimumValue;
-    return Math.max(minimumValue, Math.min(maximumValue, snapped));
+    const precision = step < 1 ? Math.round(1 / step) : 1;
+    const cleaned = Math.round(snapped * precision) / precision;
+    return Math.max(minimumValue, Math.min(maximumValue, cleaned));
   };
 
   const pan = Gesture.Pan()

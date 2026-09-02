@@ -19,7 +19,7 @@ import { ScalePressable } from "@/components/ScalePressable";
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
 
-const TYPEWRITER_MS = 33;
+const TYPEWRITER_MS = 16;
 const LETTER_FADE_MS = 480;
 
 type CharToken = { ch: string };

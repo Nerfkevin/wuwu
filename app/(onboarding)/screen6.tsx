@@ -15,12 +15,13 @@ import * as SecureStore from "expo-secure-store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { ruminationDailyHours } from "./rumination-stats";
 import { usePostHogScreenViewed } from "@/lib/posthog";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
 
-const TYPEWRITER_MS = 33;
+const TYPEWRITER_MS = 20;
 const LETTER_FADE_MS = 480;
 
 type Seg = { text: string; bold?: boolean };
@@ -201,23 +202,6 @@ function ParaSlot({
   );
 }
 
-const frequencyMap: Record<string, number> = {
-  "Once a day": 1,
-  "A few times a day": 3,
-  "Many times a day": 6,
-  "Almost constantly": 10,
-};
-
-const durationMap: Record<string, number> = {
-  "Just a moment": 0.5,
-  "A few minutes": 3,
-  "5–15 minutes": 10,
-  "15–30 minutes": 22,
-  "30–60 minutes": 45,
-  "1–2 hours": 90,
-  "Almost constant": 180,
-};
-
 const ageMap: Record<string, number> = {
   "14–24": 19,
   "25–34": 29,
@@ -360,20 +344,14 @@ export default function Screen6() {
         }
       }
 
-      const freq = frequencyMap[freqVal ?? ""] ?? 3;
-      const dur = durationMap[durVal ?? ""] ?? 10;
       const age = ageMap[ageVal ?? ""] ?? 30;
-
-      const dailyMinutes = freq * dur;
-      const dHours = dailyMinutes / 60;
-      const yearlyHours = (dailyMinutes * 365) / 60;
-      const yDays = yearlyHours / 24;
-      const yearsRemaining = 80 - age;
-      const lDays = (yearlyHours * yearsRemaining) / 24;
+      const dHours = ruminationDailyHours(freqVal, durVal);
+      const yearlyHours = dHours * 365;
+      const yearsRemaining = Math.max(0, 80 - age);
 
       setDailyHours(dHours);
-      setYearlyDays(Math.round(yDays));
-      setLifetimeDays(Math.round(lDays));
+      setYearlyDays(Math.round(yearlyHours / 24));
+      setLifetimeDays(Math.round((yearlyHours * yearsRemaining) / 24));
     })();
   }, []);
 

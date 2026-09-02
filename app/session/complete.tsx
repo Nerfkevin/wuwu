@@ -16,6 +16,7 @@ import { Fonts } from '@/constants/theme';
 import { formatPlayTime } from '@/lib/profile-stats';
 import { maybeRequestReviewAfterSessions } from '@/lib/store-review-prompt';
 import { updateStreakOnSession } from '@/lib/streak-utils';
+import { onAffirmationCompleted } from '@/lib/notifications';
 import { createAudioPlayer } from '@/lib/expo-audio';
 import { usePostHogScreenViewed } from '@/lib/posthog';
 
@@ -108,6 +109,8 @@ export default function SessionCompleteScreen() {
   const soundRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
 
   useEffect(() => {
+    void onAffirmationCompleted();
+
     let player: ReturnType<typeof createAudioPlayer> | null = null;
     try {
       player = createAudioPlayer(require('@/assets/images/complete.mp3'));

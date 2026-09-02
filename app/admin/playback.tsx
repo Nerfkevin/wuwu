@@ -4,7 +4,6 @@ import {
   Text,
   View,
   ScrollView,
-  Pressable,
   Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,22 +17,23 @@ import { ScalePressable } from '@/components/ScalePressable';
 import {
   ADMIN_TIMING_MAX_SEC,
   ADMIN_TIMING_MIN_SEC,
+  ADMIN_TIMING_STEP_SEC,
   getAdminPlaybackSettings,
   isAdminUnlocked,
   setStartDelaySec,
   setTrackGapSec,
 } from '@/lib/admin-settings';
+import GradientSnapSlider from '@/components/gradient-snap-slider';
 import { usePostHogScreenViewed } from '@/lib/posthog';
 
 const { width: screenWidth } = Dimensions.get('window');
 const isSmallDevice = screenWidth < 380;
 
-const SEC_OPTIONS = Array.from(
-  { length: ADMIN_TIMING_MAX_SEC - ADMIN_TIMING_MIN_SEC + 1 },
-  (_, i) => ADMIN_TIMING_MIN_SEC + i
-);
+function formatSec(value: number) {
+  return `${value.toFixed(1)}s`;
+}
 
-function SecPicker({
+function TimingSlider({
   value,
   onChange,
 }: {
@@ -41,25 +41,20 @@ function SecPicker({
   onChange: (next: number) => void;
 }) {
   return (
-    <View style={styles.pickerRow}>
-      {SEC_OPTIONS.map((sec) => {
-        const selected = sec === value;
-        return (
-          <Pressable
-            key={sec}
-            onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              onChange(sec);
-            }}
-            style={[styles.secChip, selected && styles.secChipSelected]}
-          >
-            <Text style={[styles.secChipText, selected && styles.secChipTextSelected]}>
-              {sec}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
+    <GradientSnapSlider
+      minimumValue={ADMIN_TIMING_MIN_SEC}
+      maximumValue={ADMIN_TIMING_MAX_SEC}
+      step={ADMIN_TIMING_STEP_SEC}
+      value={value}
+      onValueChange={(next) => {
+        const stepped =
+          Math.round(next / ADMIN_TIMING_STEP_SEC) * ADMIN_TIMING_STEP_SEC;
+        const rounded = Math.round(stepped * 10) / 10;
+        if (rounded === value) return;
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onChange(rounded);
+      }}
+    />
   );
 }
 
@@ -135,18 +130,18 @@ export default function AdminPlaybackScreen() {
             <Text style={styles.cardSubtitle}>
               Silence after each affirmation ends before the next one starts.
             </Text>
-            <Text style={styles.valueLabel}>{trackGapSec}s</Text>
-            <SecPicker value={trackGapSec} onChange={(s) => void handleGapChange(s)} />
+            <Text style={styles.valueLabel}>{formatSec(trackGapSec)}</Text>
+            <TimingSlider value={trackGapSec} onChange={(s) => void handleGapChange(s)} />
           </View>
 
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Start delay</Text>
             <Text style={styles.cardSubtitle}>
-              Wait after pressing play before the first affirmation begins. Ambient /
-              frequency audio still starts immediately.
+              Wait after pressing play before the first affirmation, ambient, and
+              frequency audio begin.
             </Text>
-            <Text style={styles.valueLabel}>{startDelaySec}s</Text>
-            <SecPicker value={startDelaySec} onChange={(s) => void handleDelayChange(s)} />
+            <Text style={styles.valueLabel}>{formatSec(startDelaySec)}</Text>
+            <TimingSlider value={startDelaySec} onChange={(s) => void handleDelayChange(s)} />
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -209,32 +204,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.serifBold,
     fontSize: 28,
     color: Colors.text,
-    marginBottom: 14,
-  },
-  pickerRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  secChip: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secChipSelected: {
-    backgroundColor: Colors.text,
-    borderColor: Colors.text,
-  },
-  secChipText: {
-    fontFamily: Fonts.mono,
-    fontSize: 14,
-    color: Colors.text,
-  },
-  secChipTextSelected: {
-    color: '#000',
+    marginBottom: 8,
   },
 });

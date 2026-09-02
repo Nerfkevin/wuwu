@@ -235,7 +235,7 @@ export default function Screen9() {
 
   const handleContinue = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    navigateTo("/(onboarding)/screen10");
+    navigateTo("/(onboarding)/screen11");
   };
 
   return (

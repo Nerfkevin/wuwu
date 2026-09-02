@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { usePostHog } from './posthog-provider';
 
 export { AppPostHogProvider, usePostHog } from './posthog-provider';
+export type { PostHog } from './posthog-provider';
 
 /** Same shape as 67Time: `screen_viewed` with `screen`, `component`, optional `screen_number`. */
 export type PostHogScreenViewedPayload = {
@@ -31,6 +32,8 @@ export function usePostHogScreenViewed(
     try {
       const props: Record<string, string | number> = { screen, component };
       if (screen_number !== undefined) props.screen_number = screen_number;
+      // `$screen` is what PostHog mobile insights use; `screen_viewed` is the funnel event.
+      void ph?.screen?.(screen, props);
       ph?.capture('screen_viewed', props);
       if (flush) void ph?.flush();
     } catch {

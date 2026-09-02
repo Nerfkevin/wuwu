@@ -194,7 +194,7 @@ export default function Screen12() {
     setShowOverlay(true);
     setGreetingVisible(0);
     const text = userName
-      ? `awesome ${userName},\nlet's build your\naffirmation track!`
+      ? `awesome ${userName},\nlet's create your\naffirmation track!`
       : `awesome,\nlet's build your\naffirmation track!`;
     const tokens = stringToCharTokens(text);
     greetingWordsRef.current = charsToWordTokens(tokens);

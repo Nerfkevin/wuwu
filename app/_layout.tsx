@@ -4,7 +4,7 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import {
@@ -15,37 +15,12 @@ import { SpaceMono_400Regular } from '@expo-google-fonts/space-mono';
 import { Colors, Fonts } from '@/constants/theme';
 import { NativeModules } from 'react-native';
 import { configureMixedPlaybackAsync } from '@/lib/audio-playback';
-import { AppPostHogProvider, usePostHog } from '@/lib/posthog-provider';
-import {
-  configureSuperwall,
-  identifySuperwallUser,
-  setupUserIdentity,
-} from '@/lib/user-identity';
+import { AppPostHogProvider, type PostHog } from '@/lib/posthog-provider';
+import { bootstrapUserIdentity, getPostHogClient } from '@/lib/user-identity';
+import { initNotifications, setupNotificationListeners } from '@/lib/notifications';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
-
-function UserIdentityManager() {
-  const posthog = usePostHog();
-
-  useEffect(() => {
-    if (!posthog) return;
-
-    const identify = async () => {
-      try {
-        await configureSuperwall();
-        await identifySuperwallUser();
-        await setupUserIdentity(posthog);
-      } catch (e) {
-        console.log('[UserIdentityManager] error:', e);
-      }
-    };
-
-    identify();
-  }, [posthog]);
-
-  return null;
-}
 
 export default function RootLayout() {
   const [loaded] = useFonts({
@@ -53,13 +28,30 @@ export default function RootLayout() {
     InstrumentSerif_400Regular_Italic,
     SpaceMono_400Regular,
   });
+  const [posthog, setPosthog] = useState<PostHog | null>(null);
 
   useEffect(() => {
     NativeModules.AudioAPIModule?.disableSessionManagement?.();
     void configureMixedPlaybackAsync();
   }, []);
 
-  if (!loaded) {
+  useEffect(() => {
+    const removeListeners = setupNotificationListeners();
+    void initNotifications();
+    return removeListeners;
+  }, []);
+
+  useEffect(() => {
+    void bootstrapUserIdentity()
+      .then(setPosthog)
+      .catch((e) => {
+        console.log('[Identity] bootstrap rejected:', e);
+        const fallback = getPostHogClient();
+        if (fallback) setPosthog(fallback);
+      });
+  }, []);
+
+  if (!loaded || !posthog) {
     return null;
   }
 
@@ -75,8 +67,7 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AppPostHogProvider>
-      <UserIdentityManager />
+      <AppPostHogProvider client={posthog}>
       <ThemeProvider value={theme}>
         <Stack
           screenOptions={{

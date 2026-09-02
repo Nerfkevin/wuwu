@@ -30,9 +30,13 @@ import {
   BINAURAL_CARRIER,
   OSC_VOLUME,
   AFFIRMATION_DEFAULT_VOLUME_PERCENT,
+  AMBIENT_VOLUME,
   BINAURAL_BEATS,
   BOWL_AUDIO_BY_FREQUENCY,
   BRAINWAVE_LABELS,
+  NATURE_SOUNDS,
+  AmbientNode,
+  AmbientSoundId,
   withAlpha,
   affirmationPercentToGain,
 } from '../session/playback-constants';
@@ -47,6 +51,8 @@ const triggerHaptic = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Ligh
 const INTRO_MS = 5000;
 const GAP_MS = 5000;
 const MAX_TRACKS = 3;
+const AMBIENT_ONBOARDING_VOLUME = 0.15;
+const ONBOARDING_AMBIENTS: AmbientSoundId[] = ['rain', 'birds'];
 
 /** Solfeggio Hz → accent: light pink/lavender (low) → deep indigo (high) */
 const FREQ_COLORS: Record<string, string> = {
@@ -105,6 +111,7 @@ export default function Screen15() {
   const affirmationVolumeRef = useRef(
     affirmationPercentToGain(AFFIRMATION_DEFAULT_VOLUME_PERCENT)
   );
+  const ambientNodesRef = useRef<Map<AmbientSoundId, AmbientNode>>(new Map());
 
   // ─── Session timer refs ───────────────────────────────────────────────────
   const sessionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -252,6 +259,12 @@ export default function Screen15() {
         ref.current = null;
       }
     });
+    for (const { source, gain } of ambientNodesRef.current.values()) {
+      try { source.stop(); } catch { /* already ended */ }
+      try { source.disconnect(); } catch { /* best effort */ }
+      try { gain.disconnect(); } catch { /* best effort */ }
+    }
+    ambientNodesRef.current.clear();
     bowlGainRef.current = null;
     affirmationGainRef.current = null;
     binauralGainRef.current = null;
@@ -272,6 +285,10 @@ export default function Screen15() {
       if (binauralGainRef.current) binauralGainRef.current.gain.value = gainVal;
       if (bowlGainRef.current) {
         bowlGainRef.current.gain.value = next ? 0 : BOWL_VOLUME;
+      }
+      const ambientGain = next ? 0 : AMBIENT_VOLUME * AMBIENT_ONBOARDING_VOLUME;
+      for (const { gain } of ambientNodesRef.current.values()) {
+        gain.gain.value = ambientGain;
       }
       return next;
     });
@@ -351,7 +368,8 @@ export default function Screen15() {
 
       const allRecs = await getSavedRecordings();
       if (!mountedRef.current) return;
-      const recs = allRecs.slice(0, MAX_TRACKS);
+      const source = allRecs[0];
+      const recs = source ? Array.from({ length: MAX_TRACKS }, () => source) : [];
       setRecordings(recs);
       // Don't set displayMessage directly — let the transition effect animate it in
 
@@ -437,6 +455,28 @@ export default function Screen15() {
         pureOscRef.current = osc;
       }
 
+      const ambientGainValue = AMBIENT_VOLUME * AMBIENT_ONBOARDING_VOLUME;
+      for (const id of ONBOARDING_AMBIENTS) {
+        const entry = NATURE_SOUNDS.find((s) => s.id === id);
+        if (!entry?.asset) continue;
+        try {
+          const buffer = await ctx.decodeAudioData(entry.asset);
+          if (!mountedRef.current) return;
+          const gain = ctx.createGain();
+          gain.gain.setValueAtTime(0, ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(ambientGainValue, ctx.currentTime + 0.05);
+          gain.connect(ctx.destination);
+          const src = ctx.createBufferSource();
+          src.buffer = buffer;
+          src.loop = true;
+          src.connect(gain);
+          src.start();
+          ambientNodesRef.current.set(id, { source: src, gain });
+        } catch (e) {
+          console.warn(`[screen15] failed to start ${id} ambient:`, e);
+        }
+      }
+
       isPlayingRef.current = true;
       startSessionTimer();
 
@@ -500,7 +540,13 @@ export default function Screen15() {
       // Fade all gain nodes to 0 over 1 s before stopping
       const FADE_S = 1;
       const now = ctx.currentTime;
-      [bowlGainRef.current, affirmationGainRef.current, binauralGainRef.current].forEach((g) => {
+      const fadeGains = [
+        bowlGainRef.current,
+        affirmationGainRef.current,
+        binauralGainRef.current,
+        ...[...ambientNodesRef.current.values()].map((n) => n.gain),
+      ];
+      fadeGains.forEach((g) => {
         if (!g) return;
         try {
           g.gain.cancelScheduledValues(now);

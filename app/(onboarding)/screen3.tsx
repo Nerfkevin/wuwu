@@ -155,18 +155,28 @@ export default function Screen3() {
     outputRange: ["rgba(255,255,255,0.35)", "rgba(0,0,0,1)"],
   });
 
-  const handleContinue = async () => {
-    if (!name.trim()) return;
+  const persistAndContinue = async (displayName: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     Keyboard.dismiss();
-    await SecureStore.setItemAsync("user_name", name.trim());
+    await SecureStore.setItemAsync("user_name", displayName);
     try {
       await setupUserIdentity(ph);
       await identifySuperwallUser();
-      ph?.capture('onboarding_name_set', { component: 'Screen3' });
+      ph?.capture(displayName ? "onboarding_name_set" : "onboarding_name_skipped", {
+        component: "Screen3",
+      });
       void ph?.flush();
     } catch {}
     navigateTo("/(onboarding)/screen4");
+  };
+
+  const handleContinue = async () => {
+    if (!name.trim()) return;
+    await persistAndContinue(name.trim());
+  };
+
+  const handleSkipName = async () => {
+    await persistAndContinue("");
   };
 
   const charTextStyle = styles.charText;
@@ -221,6 +231,14 @@ export default function Screen3() {
                   selectionColor="#fff"
                 />
                 <View style={styles.inputLine} />
+                <ScalePressable
+                  onPress={handleSkipName}
+                  scaleTo={0.98}
+                  hitSlop={8}
+                  style={{ alignSelf: "center" }}
+                >
+                  <Text style={styles.skipText}>continue without name</Text>
+                </ScalePressable>
               </Animated.View>
             </View>
 
@@ -299,6 +317,15 @@ const styles = StyleSheet.create({
   inputLine: {
     height: 1,
     backgroundColor: "rgba(255,255,255,0.25)",
+  },
+  skipText: {
+    marginTop: 14,
+    fontSize: isSmallDevice ? 12 : 13,
+    color: "rgba(255,255,255,0.7)",
+    fontFamily: Fonts.mono,
+    letterSpacing: 0.3,
+    paddingHorizontal: 4,
+    textAlign: "center",
   },
   footer: {
     paddingHorizontal: isSmallDevice ? 24 : 32,

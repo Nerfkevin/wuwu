@@ -9,7 +9,6 @@ import {
   FlatList,
   Pressable,
   ScrollView,
-  Easing,
   Linking,
 } from "react-native";
 import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
@@ -18,27 +17,21 @@ import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { createAudioPlayer, getRecordingPermissionsAsync } from "@/lib/expo-audio";
-import type { AudioPlayer } from "@/lib/expo-audio";
+import { requestRecordingPermissionsAsync } from "@/lib/expo-audio";
 import { useFrequencyPreview } from "@/lib/use-frequency-preview";
-import { Fonts, Colors, Layout } from "@/constants/theme";
+import { Fonts, Colors } from "@/constants/theme";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AnimatedGlow, { GlowEvent } from "@/lib/animated-glow";
 import { GlowPresets } from "@/constants/glow";
 import { AFFIRMATION_PILLARS, PillarKey } from "@/constants/affirmations";
 import { getSavedRecordings } from "@/lib/recording-store";
-import {
-  activateLockScreenControls,
-  clearLockScreenControls,
-  configureMixedPlaybackAsync,
-} from "@/lib/audio-playback";
 import { useOnboardingNav } from "./use-onboarding-nav";
 import { usePostHogScreenViewed } from "@/lib/posthog";
 import { LinearGradient } from "expo-linear-gradient";
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 380;
-const TOTAL_SLIDES = 6; // 0=pillar grid, 1-3=affirmations, 4=record, 5=frequency
+const TOTAL_SLIDES = 3; // 0=pillar grid, 1=affirmation, 2=frequency
 const MSG_COUNT    = 5;
 const HEADER_HORIZONTAL_PADDING = isSmallDevice ? 28 : 32;
 const CONTENT_HORIZONTAL_PADDING = isSmallDevice ? 20 : 24;
@@ -83,13 +76,10 @@ function FadeLetter({ ch, charStyle }: { ch: string; charStyle: object }) {
 }
 
 const PILLAR_TITLE = "select affirmation\npillar";
-const RECORD_TITLE = "record your\nmessages";
 const FREQUENCY_TITLE = "layer healing\nfrequency";
 
 const PILLAR_TITLE_TOKENS = stringToCharTokens(PILLAR_TITLE);
 const PILLAR_TITLE_WORDS  = charsToWordTokens(PILLAR_TITLE_TOKENS);
-const RECORD_TITLE_TOKENS = stringToCharTokens(RECORD_TITLE);
-const RECORD_TITLE_WORDS  = charsToWordTokens(RECORD_TITLE_TOKENS);
 const FREQ_TITLE_TOKENS   = stringToCharTokens(FREQUENCY_TITLE);
 const FREQ_TITLE_WORDS    = charsToWordTokens(FREQ_TITLE_TOKENS);
 
@@ -131,19 +121,6 @@ type PillarItem = {
   value: string;
   color: string;
   icon: keyof typeof Ionicons.glyphMap;
-};
-
-type TrackItem = {
-  id: string;
-  text: string;
-  pillar: string;
-  uri?: string;
-  recorded: boolean;
-};
-
-type SelectedRecordingItem = {
-  pillar: string;
-  text: string;
 };
 
 // ─── static data ──────────────────────────────────────────────────────────────
@@ -358,19 +335,15 @@ export default function Screen13() {
 
   const activeFreq = selectedBg === "Singing Bowl" ? selectedBowlFreq : selectedPureFreq;
   const [pillarTitleVisible,  setPillarTitleVisible]  = useState(0);
-  const [recordTitleVisible,  setRecordTitleVisible]  = useState(0);
   const [freqTitleVisible,    setFreqTitleVisible]    = useState(0);
   const [titleAnimDone,       setTitleAnimDone]       = useState(false);
 
   // ── mic permission gate ──
   const [showMicGate, setShowMicGate] = useState(false);
 
-  // ── recording slide state ──
-  const [recordingSelections, setRecordingSelections] = useState<SelectedRecordingItem[]>([]);
+  // ── recording return state ──
   const [savedRecordingsByText, setSavedRecordingsByText] = useState<Record<string, { uri: string }>>({});
-  const [playingId, setPlayingId]                         = useState<string | null>(null);
-  const playerRef      = useRef<AudioPlayer | null>(null);
-  const statusTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const awaitingRecordingRef = useRef(false);
   const autoAdvancedRef = useRef(false);
 
   // ── animation refs ──
@@ -380,18 +353,11 @@ export default function Screen13() {
   const fadeGrid     = useRef(new Animated.Value(0)).current;
   const fadeAff      = useRef(new Animated.Value(0)).current;
   const fadeMsgs     = useRef(new Animated.Value(1)).current;
-  const fadeRec      = useRef(new Animated.Value(0)).current;
   const fadeFreq     = useRef(new Animated.Value(0)).current;
   const fadeContinue = useRef(new Animated.Value(0)).current;
   const btnScale = useRef(new Animated.Value(1)).current;
-  const recordIconPulse = useRef(new Animated.Value(0)).current;
-  const recordIconGlow  = useRef(new Animated.Value(0)).current;
   const titleTypingTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const titleIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // pillar indicator scale/opacity (3 values)
-  const pillarScales    = useRef([new Animated.Value(1), new Animated.Value(0.78), new Animated.Value(0.78)]).current;
-  const pillarOpacities = useRef([new Animated.Value(1), new Animated.Value(0.35), new Animated.Value(0.35)]).current;
 
   const clearTitleTypingTimeouts = useCallback(() => {
     titleTypingTimeoutsRef.current.forEach(clearTimeout);
@@ -450,19 +416,8 @@ export default function Screen13() {
     );
   }, []);
 
-  const recordingItems = React.useMemo(() => {
-    return recordingSelections.map(({ pillar, text }, index) => {
-      const saved = savedRecordingsByText[text];
-
-      return {
-        id: `track-${index}-${pillar}`,
-        text,
-        pillar,
-        uri: saved?.uri,
-        recorded: !!saved?.uri,
-      };
-    });
-  }, [recordingSelections, savedRecordingsByText]);
+  const selectedPillar = selectedPillars[0] ?? null;
+  const selectedAffirmationText = selectedPillar ? selectedMessages[selectedPillar]?.trim() ?? "" : "";
 
   // ── init ──
   useEffect(() => {
@@ -476,20 +431,15 @@ export default function Screen13() {
       return;
     }
 
-    if (activeIndex === 4) {
-      runTitleTypewriter(RECORD_TITLE_TOKENS, setRecordTitleVisible, fadeRec, () => setTitleAnimDone(true));
-      return;
-    }
-
-    if (activeIndex === 5) {
+    if (activeIndex === 2) {
       runTitleTypewriter(FREQ_TITLE_TOKENS, setFreqTitleVisible, fadeFreq, () => setTitleAnimDone(true));
       return;
     }
 
-    // affirmation slides have no title typewriter — unblock immediately
+    // affirmation slide has no title typewriter — unblock immediately
     setTitleAnimDone(true);
     clearTitleTypingTimeouts();
-  }, [activeIndex, clearTitleTypingTimeouts, fadeFreq, fadeGrid, fadeRec, runTitleTypewriter]);
+  }, [activeIndex, clearTitleTypingTimeouts, fadeFreq, fadeGrid, runTitleTypewriter]);
 
   useEffect(() => () => clearTitleTypingTimeouts(), [clearTitleTypingTimeouts]);
 
@@ -500,115 +450,52 @@ export default function Screen13() {
     );
   }, [activeIndex]);
 
-  // pillar indicator animations (slides 1-3)
+  // stop freq preview when leaving frequency slide
   useEffect(() => {
-    if (activeIndex < 1 || activeIndex > 3) return;
-    const cur = activeIndex - 1;
-    pillarScales.forEach((anim, i) =>
-      Animated.spring(anim, { toValue: i === cur ? 1 : 0.78, useNativeDriver: true, tension: 120, friction: 8 }).start()
-    );
-    pillarOpacities.forEach((anim, i) =>
-      Animated.timing(anim, { toValue: i === cur ? 1 : 0.35, duration: 280, useNativeDriver: true }).start()
-    );
+    if (activeIndex !== 2) stopPreview();
   }, [activeIndex]);
 
-  useEffect(() => {
-    if (activeIndex !== 4) {
-      recordIconPulse.stopAnimation();
-      recordIconPulse.setValue(0);
-      recordIconGlow.stopAnimation();
-      recordIconGlow.setValue(0);
-      return;
-    }
-
-    // shake: waits, then rattles
-    const shake = Animated.loop(
-      Animated.sequence([
-        Animated.delay(1200),
-        Animated.timing(recordIconPulse, { toValue:  1, duration: 80, easing: Easing.linear, useNativeDriver: true }),
-        Animated.timing(recordIconPulse, { toValue: -1, duration: 80, easing: Easing.linear, useNativeDriver: true }),
-        Animated.timing(recordIconPulse, { toValue:  1, duration: 80, easing: Easing.linear, useNativeDriver: true }),
-        Animated.timing(recordIconPulse, { toValue: -1, duration: 80, easing: Easing.linear, useNativeDriver: true }),
-        Animated.timing(recordIconPulse, { toValue:  0, duration: 60, easing: Easing.linear, useNativeDriver: true }),
-      ])
-    );
-
-    // slow breathe: scale + opacity
-    const glow = Animated.loop(
-      Animated.sequence([
-        Animated.timing(recordIconGlow, { toValue: 1, duration: 950, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(recordIconGlow, { toValue: 0, duration: 950, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ])
-    );
-
-    shake.start();
-    glow.start();
-    return () => { shake.stop(); glow.stop(); };
-  }, [activeIndex, recordIconPulse, recordIconGlow]);
-
-  // stop freq preview when leaving slide 5
-  useEffect(() => {
-    if (activeIndex !== 5) stopPreview();
-  }, [activeIndex]);
-
-  // stop playback when leaving slide 4
-  useEffect(() => {
-    if (activeIndex !== 4) {
-      if (statusTimerRef.current) { clearInterval(statusTimerRef.current); statusTimerRef.current = null; }
-      if (playerRef.current) {
-        clearLockScreenControls(playerRef.current);
-        playerRef.current.remove();
-        playerRef.current = null;
-      }
-      setPlayingId(null);
-    }
-  }, [activeIndex]);
-
-  // ── recording data ──
-
-  useEffect(() => {
-    if (activeIndex !== 4) return;
-    loadSavedRecordingMeta();
-  }, [activeIndex, loadSavedRecordingMeta]);
+  const goToFrequencySlide = useCallback(() => {
+    Animated.timing(fadeAff, { toValue: 0, duration: 220, useNativeDriver: true }).start(() => {
+      fadeFreq.setValue(0);
+      setActiveIndex(2);
+    });
+  }, [fadeAff, fadeFreq]);
 
   // refresh recorded flags when returning from the recording screen
-  const refreshTracks = useCallback(async () => {
-    await loadSavedRecordingMeta();
-  }, [loadSavedRecordingMeta]);
-
   useFocusEffect(
     useCallback(() => {
-      if (activeIndexRef.current === 4) {
-        refreshTracks();
+      if (activeIndexRef.current === 1 && awaitingRecordingRef.current) {
+        void loadSavedRecordingMeta();
       }
-    }, [refreshTracks])
+    }, [loadSavedRecordingMeta])
   );
 
-  // auto-advance to frequency slide once all recordings are done
+  // auto-advance to frequency slide once the selected message is recorded
   useEffect(() => {
-    if (activeIndex !== 4) {
+    if (activeIndex !== 1) {
       autoAdvancedRef.current = false;
       return;
     }
-    if (autoAdvancedRef.current) return;
-    const allRecorded = recordingItems.length > 0 && recordingItems.every((i) => i.recorded);
-    if (!allRecorded) return;
+    if (!awaitingRecordingRef.current || autoAdvancedRef.current) return;
+    if (!selectedAffirmationText || !savedRecordingsByText[selectedAffirmationText]?.uri) return;
 
     autoAdvancedRef.current = true;
-    const t = setTimeout(() => goToFrequencySlide(), 420);
+    awaitingRecordingRef.current = false;
+    const t = setTimeout(() => goToFrequencySlide(), 220);
     return () => clearTimeout(t);
-  }, [recordingItems, activeIndex]);
+  }, [savedRecordingsByText, activeIndex, selectedAffirmationText, goToFrequencySlide]);
 
   // ── canContinue ──
 
-  const currentAffPillar = activeIndex >= 1 && activeIndex <= 3 ? selectedPillars[activeIndex - 1] : null;
+  const currentAffPillar = activeIndex === 1 ? selectedPillar : null;
+  const affPillarData = currentAffPillar ? AFFIRMATION_PILLARS[currentAffPillar as PillarKey] : null;
 
   const canContinue =
     !titleAnimDone ? false :
-    activeIndex === 0 ? selectedPillars.length >= 3 :
-    activeIndex >= 1 && activeIndex <= 3 ? !!selectedMessages[currentAffPillar!] :
-    activeIndex === 4 ? recordingItems.length > 0 && recordingItems.every((item) => item.recorded) :
-    activeIndex === 5 ? true :
+    activeIndex === 0 ? selectedPillars.length === 1 :
+    activeIndex === 1 ? !!selectedAffirmationText :
+    activeIndex === 2 ? true :
     false;
 
   useEffect(() => {
@@ -640,27 +527,6 @@ export default function Screen13() {
     });
   };
 
-  const goToNextAff = (next: number) => {
-    Animated.timing(fadeMsgs, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
-      setActiveIndex(next);
-      Animated.timing(fadeMsgs, { toValue: 1, duration: 300, useNativeDriver: true }).start();
-    });
-  };
-
-  const goToRecordingSlide = () => {
-    Animated.timing(fadeAff, { toValue: 0, duration: 220, useNativeDriver: true }).start(() => {
-      fadeRec.setValue(0);
-      setActiveIndex(4);
-    });
-  };
-
-  const goToFrequencySlide = () => {
-    Animated.timing(fadeRec, { toValue: 0, duration: 220, useNativeDriver: true }).start(() => {
-      fadeFreq.setValue(0);
-      setActiveIndex(5);
-    });
-  };
-
   // ── affirmation slide handlers ──
 
   const handleShuffle = (pillarValue: string) => {
@@ -674,11 +540,7 @@ export default function Screen13() {
   const handleTogglePillar = (value: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedPillars(prev => {
-      const next = prev.includes(value)
-        ? prev.filter(v => v !== value)
-        : prev.length < 3
-          ? [...prev, value]
-          : prev;
+      const next = prev.includes(value) ? [] : [value];
       setSelectedMessages((prevMessages) =>
         Object.fromEntries(
           Object.entries(prevMessages).filter(([pillar]) => next.includes(pillar))
@@ -689,61 +551,15 @@ export default function Screen13() {
     });
   };
 
-  // ── playback ──
-
-  const watchPlayerStatus = () => {
-    if (statusTimerRef.current) { clearInterval(statusTimerRef.current); statusTimerRef.current = null; }
-    statusTimerRef.current = setInterval(() => {
-      const player = playerRef.current;
-      if (!player) return;
-      const duration = player.duration    || 0;
-      const current  = player.currentTime || 0;
-      if (!player.playing && duration > 0 && current >= duration - 0.05) {
-        clearLockScreenControls(player);
-        player.remove();
-        playerRef.current = null;
-        setPlayingId(null);
-        if (statusTimerRef.current) { clearInterval(statusTimerRef.current); statusTimerRef.current = null; }
-      }
-    }, 120);
-  };
-
-  const handlePlay = async (item: TrackItem) => {
-    if (!item.uri) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (playerRef.current && playingId === item.id) {
-      if (playerRef.current.playing) {
-        playerRef.current.pause();
-        clearLockScreenControls(playerRef.current);
-        setPlayingId(null);
-        if (statusTimerRef.current) { clearInterval(statusTimerRef.current); statusTimerRef.current = null; }
-      } else {
-        activateLockScreenControls(playerRef.current, { title: item.text });
-        playerRef.current.play();
-        setPlayingId(item.id);
-        watchPlayerStatus();
-      }
-      return;
-    }
-    if (statusTimerRef.current) { clearInterval(statusTimerRef.current); statusTimerRef.current = null; }
-    if (playerRef.current) { clearLockScreenControls(playerRef.current); playerRef.current.remove(); playerRef.current = null; }
-    await configureMixedPlaybackAsync();
-    const player = createAudioPlayer(item.uri);
-    playerRef.current = player;
-    setPlayingId(item.id);
-    activateLockScreenControls(player, { title: item.text });
-    player.play();
-    watchPlayerStatus();
-  };
-
-  const handleRecord = async (item: TrackItem) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const perm = await getRecordingPermissionsAsync();
+  const openRecordingModal = async (pillar: string, text: string) => {
+    const perm = await requestRecordingPermissionsAsync();
     if (!perm.granted) {
+      awaitingRecordingRef.current = false;
       setShowMicGate(true);
       return;
     }
-    router.push({ pathname: "/add/recording", params: { text: item.text, pillar: item.pillar, onboarding: "1" } });
+    awaitingRecordingRef.current = true;
+    router.push({ pathname: "/add/recording", params: { text, pillar, onboarding: "1" } });
   };
 
   // ── continue ──
@@ -757,17 +573,8 @@ export default function Screen13() {
         JSON.stringify(selectedPillars)
       );
       goToAffirmations();
-    } else if (activeIndex < 3) {
-      goToNextAff(activeIndex + 1);
-    } else if (activeIndex === 3) {
-      const nextRecordingSelections = selectedPillars
-        .map((pillar) => ({
-          pillar,
-          text: selectedMessages[pillar]?.trim() ?? "",
-        }))
-        .filter((item) => item.text.length > 0);
-
-      setRecordingSelections(nextRecordingSelections);
+    } else if (activeIndex === 1) {
+      if (!selectedPillar || !selectedAffirmationText) return;
       await AsyncStorage.setItem(
         "onboarding_pillars_selected",
         JSON.stringify(selectedPillars)
@@ -776,71 +583,13 @@ export default function Screen13() {
         "onboarding_affirmations",
         JSON.stringify(selectedMessages)
       );
-      goToRecordingSlide();
-    } else if (activeIndex === 4) {
-      goToFrequencySlide();
+      await openRecordingModal(selectedPillar, selectedAffirmationText);
     } else {
       await AsyncStorage.setItem("onboarding_freq",       activeFreq);
       await AsyncStorage.setItem("onboarding_freq_bg",    selectedBg);
       await AsyncStorage.setItem("onboarding_brainwave",  selectedBrainwave);
       navigateTo("/(onboarding)/screen14");
     }
-  };
-
-  // ── recording slide render helper ──
-
-  const renderTrackItem = (item: TrackItem) => {
-    const pillarData   = AFFIRMATION_PILLARS[item.pillar as PillarKey];
-    const glowColor    = pillarData?.color ?? Colors.chakra.violet;
-    const isNowPlaying = playingId === item.id;
-    const needsRecording = !item.recorded;
-    const micStyle = needsRecording
-      ? {
-          opacity: recordIconGlow.interpolate({ inputRange: [0, 1], outputRange: [0.38, 1] }),
-          transform: [
-            { rotate: recordIconPulse.interpolate({ inputRange: [-1, 0, 1], outputRange: ["-22deg", "0deg", "22deg"] }) },
-            { scale:  recordIconGlow.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1.14] }) },
-          ],
-        }
-      : undefined;
-
-    return (
-      <View style={styles.trackRow}>
-        <AnimatedGlow
-          preset={GlowPresets.vaporwave(Layout.borderRadius, glowColor)}
-          activeState="default"
-        >
-          <View style={[styles.trackOuter, { borderColor: glowColor }]}>
-            <TouchableOpacity
-              style={styles.trackInner}
-              activeOpacity={0.7}
-              onPress={() => (item.recorded ? handlePlay(item) : handleRecord(item))}
-            >
-              <View style={styles.trackTextWrap}>
-                <Text style={styles.trackText} numberOfLines={2}>{item.text}</Text>
-                <Text style={styles.trackSub}>{pillarData?.title ?? item.pillar}</Text>
-              </View>
-
-              <View
-                style={[styles.trackActionBtn, { backgroundColor: item.recorded ? glowColor + "22" : "#1e1e1e" }]}
-              >
-                {needsRecording ? (
-                  <Animated.View style={micStyle}>
-                    <Ionicons name="mic" size={20} color={glowColor} />
-                  </Animated.View>
-                ) : (
-                  <Ionicons
-                    name={isNowPlaying ? "pause" : "play"}
-                    size={20}
-                    color={glowColor}
-                  />
-                )}
-              </View>
-            </TouchableOpacity>
-          </View>
-        </AnimatedGlow>
-      </View>
-    );
   };
 
   // ── render ────────────────────────────────────────────────────────────────
@@ -881,7 +630,7 @@ export default function Screen13() {
               </Animated.View>
             </View>
             <Animated.View style={{ opacity: fadeGrid }}>
-              <Text style={styles.hint}>select 3 pillars to begin, you can always add more later!</Text>
+              <Text style={styles.hint}>select a pillar to begin, you can always add more later!</Text>
             </Animated.View>
           </View>
 
@@ -896,13 +645,11 @@ export default function Screen13() {
               style={styles.gridList}
               renderItem={({ item }) => {
                 const isSel = selectedPillars.includes(item.value);
-                const atMax = selectedPillars.length >= 3 && !isSel;
                 return (
                   <PillarCard
                     item={item}
                     isSelected={isSel}
-                    isDisabled={atMax}
-                    onSelect={() => { if (!atMax) handleTogglePillar(item.value); }}
+                    onSelect={() => handleTogglePillar(item.value)}
                   />
                 );
               }}
@@ -911,35 +658,30 @@ export default function Screen13() {
           <View style={styles.spacer} />
         </>)}
 
-        {/* ── slides 1-3: affirmation picker ── */}
-        {activeIndex >= 1 && activeIndex <= 3 && (
+        {/* ── slide 1: affirmation picker ── */}
+        {activeIndex === 1 && (
           <Animated.View style={[styles.affArea, { opacity: fadeAff }]}>
             <View style={styles.pillarRow}>
-              {selectedPillars.map((value, i) => {
-                const p        = AFFIRMATION_PILLARS[value as PillarKey];
-                const isActive = i === activeIndex - 1;
-                return (
-                  <Animated.View
-                    key={value}
-                    style={{ transform: [{ scale: pillarScales[i] }], opacity: pillarOpacities[i] }}
-                  >
-                    <AnimatedGlow
-                      preset={GlowPresets.ripple(24, p.color, 0.35)}
-                      activeState={isActive ? "hover" : "default"}
-                    >
-                      <View style={[
-                        styles.pillarIndicator,
-                        { borderColor: isActive ? p.color : "rgba(255,255,255,0.2)", borderWidth: isActive ? 2 : 1.5 },
-                      ]}>
-                        <Ionicons name={p.icon as any} size={isSmallDevice ? 26 : 32} color={isActive ? p.color : "rgba(255,255,255,0.55)"} />
-                        <Text style={[styles.pillarShort, isActive && { color: p.color }]}>
-                          {PILLAR_SHORT[value]}
-                        </Text>
-                      </View>
-                    </AnimatedGlow>
-                  </Animated.View>
-                );
-              })}
+              {affPillarData && currentAffPillar ? (
+                <AnimatedGlow
+                  preset={GlowPresets.ripple(24, affPillarData.color, 0.35)}
+                  activeState="hover"
+                >
+                  <View style={[
+                    styles.pillarIndicator,
+                    { borderColor: affPillarData.color, borderWidth: 2 },
+                  ]}>
+                    <Ionicons
+                      name={affPillarData.icon as any}
+                      size={isSmallDevice ? 26 : 32}
+                      color={affPillarData.color}
+                    />
+                    <Text style={[styles.pillarShort, { color: affPillarData.color }]}>
+                      {PILLAR_SHORT[currentAffPillar]}
+                    </Text>
+                  </View>
+                </AnimatedGlow>
+              ) : null}
             </View>
 
             <View style={styles.affDescRow}>
@@ -968,6 +710,7 @@ export default function Screen13() {
                     style={[styles.msgCard, isSel && styles.msgCardSelected]}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      awaitingRecordingRef.current = false;
                       setSelectedMessages((prev) => ({ ...prev, [currentAffPillar]: msg }));
                     }}
                     activeOpacity={0.75}
@@ -980,59 +723,8 @@ export default function Screen13() {
           </Animated.View>
         )}
 
-        {/* ── slide 4: record your messages ── */}
-        {activeIndex === 4 && (
-          <View style={styles.recArea}>
-            <View style={styles.recHeader}>
-              <View style={styles.recHeaderLeft}>
-                <View style={[styles.titleCharRow, { minHeight: isSmallDevice ? 64 : 80 }]}>
-                  {RECORD_TITLE_WORDS.map((word, wIdx) => {
-                    const charsVisible = Math.max(0, Math.min(word.chars.length, recordTitleVisible - word.startIdx));
-                    if (charsVisible === 0) return null;
-                    if (word.chars.length === 1 && word.chars[0].ch === "\n") return <View key={wIdx} style={styles.titleLineBreak} />;
-                    return (
-                      <View key={wIdx} style={styles.titleWordRow}>
-                        {word.chars.slice(0, charsVisible).map((tok, cIdx) => (
-                          <FadeLetter key={`${word.startIdx}-${cIdx}`} ch={tok.ch} charStyle={styles.recTitle} />
-                        ))}
-                      </View>
-                    );
-                  })}
-                </View>
-                <Animated.View style={{ opacity: fadeRec }}>
-                  <Text style={styles.recSubtitle}>
-                    click on each message and record{"\n"}them in your own voice
-                  </Text>
-                </Animated.View>
-              </View>
-              <Animated.View style={{ opacity: fadeRec }}>
-                <Text style={styles.micDecor}>🎙️</Text>
-              </Animated.View>
-            </View>
-
-            <Animated.View style={[styles.recBody, { opacity: fadeRec }]}>
-              <ScrollView
-                contentContainerStyle={[
-                  styles.trackListContent,
-                  recordingItems.length === 0 && styles.trackListContentEmpty,
-                ]}
-                style={styles.recList}
-                showsVerticalScrollIndicator={false}
-              >
-                {recordingItems.length > 0 ? (
-                  recordingItems.map((item) => (
-                    <View key={item.id}>{renderTrackItem(item)}</View>
-                  ))
-                ) : (
-                  <Text style={styles.emptyTracksText}>no selected messages yet</Text>
-                )}
-              </ScrollView>
-            </Animated.View>
-          </View>
-        )}
-
-        {/* ── slide 5: frequency selection ── */}
-        {activeIndex === 5 && (
+        {/* ── slide 2: frequency selection ── */}
+        {activeIndex === 2 && (
           <View style={styles.freqArea}>
             <View style={styles.freqHeaderPadded}>
             <View style={styles.freqHeaderBlock}>
@@ -1322,7 +1014,7 @@ const styles = StyleSheet.create({
   },
   spacer: { flex: 1 },
 
-  // slides 1-3
+  // slides 1
   affArea: {
     flex: 1,
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
@@ -1406,106 +1098,7 @@ const styles = StyleSheet.create({
   },
   msgTextSelected: { color: "#fff" },
 
-  // slide 4
-  recArea: {
-    flex: 1,
-    minHeight: 0,
-  },
-  recHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    paddingHorizontal: HEADER_HORIZONTAL_PADDING,
-    paddingTop: HEADER_TOP_PADDING,
-    paddingBottom: 12,
-  },
-  recBody: {
-    flex: 1,
-    minHeight: 0,
-  },
-  recList: {
-    flex: 1,
-    minHeight: 0,
-    overflow: "visible",
-  },
-  recHeaderLeft: { flex: 1 },
-  recTitle: {
-    fontFamily: Fonts.serif,
-    fontSize: isSmallDevice ? 26 : 30,
-    color: Colors.text,
-    lineHeight: isSmallDevice ? 32 : 40,
-    marginBottom: 6,
-  },
-  recSubtitle: {
-    fontFamily: Fonts.mono,
-    fontSize: 12,
-    color: Colors.textSecondary,
-    lineHeight: 18,
-  },
-  micDecor: {
-    fontSize: isSmallDevice ? 34 : 48,
-    marginLeft: 8,
-    marginTop: 4,
-  },
-  trackListContent: {
-    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
-    paddingTop: 4,
-    paddingBottom: 24,
-    marginTop: 50,
-  },
-  trackListContentEmpty: {
-    flexGrow: 1,
-  },
-  emptyTracksText: {
-    marginTop: 24,
-    paddingHorizontal: 24,
-    fontFamily: Fonts.mono,
-    fontSize: 12,
-    color: Colors.textSecondary,
-    textAlign: "center",
-  },
-  trackRow: { marginBottom: 12 },
-  trackOuter: {
-    borderRadius: Layout.borderRadius,
-    borderWidth: 2,
-    padding: 4,
-  },
-  trackInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: Colors.background,
-    borderRadius: Layout.borderRadius - 4,
-    paddingLeft: 6,
-    paddingRight: 14,
-    paddingVertical: 14,
-  },
-  trackTextWrap: {
-    flex: 1,
-    marginRight: 12,
-    marginLeft: 12,
-  },
-  trackText: {
-    fontFamily: Fonts.mono,
-    fontSize: 13,
-    color: Colors.text,
-    lineHeight: 19,
-    marginBottom: 4,
-  },
-  trackSub: {
-    fontFamily: Fonts.mono,
-    fontSize: 11,
-    color: Colors.textSecondary,
-  },
-  trackActionBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#1e1e1e",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  // slide 5 — frequency
+  // slide 2 — frequency
   freqArea: {
     flex: 1,
     paddingTop: HEADER_TOP_PADDING,

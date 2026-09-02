@@ -80,6 +80,10 @@ export function useAudioEngine({
   const affirmationVolumeRef = useRef(affirmationPercentToGain(AFFIRMATION_DEFAULT_VOLUME_PERCENT));
   const hasStartedFirstAffirmationRef = useRef(false);
   const firstAffirmationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasStartedBedsRef = useRef(false);
+  const firstBedsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playStartedAtRef = useRef<number | null>(null);
+  const affirmationStartIdRef = useRef(0);
   const trackGapMsRef = useRef(DEFAULT_TRACK_GAP_SEC * 1000);
   const startDelayMsRef = useRef(DEFAULT_START_DELAY_SEC * 1000);
   const ambientVolumesRef = useRef<Partial<Record<AmbientSoundId, number>>>({});
@@ -113,6 +117,13 @@ export function useAudioEngine({
     if (firstAffirmationTimerRef.current) {
       clearTimeout(firstAffirmationTimerRef.current);
       firstAffirmationTimerRef.current = null;
+    }
+  }, []);
+
+  const clearFirstBedsTimer = useCallback(() => {
+    if (firstBedsTimerRef.current) {
+      clearTimeout(firstBedsTimerRef.current);
+      firstBedsTimerRef.current = null;
     }
   }, []);
 
@@ -340,7 +351,7 @@ export function useAudioEngine({
       });
     } else {
       setActiveAmbientSounds((prev) => new Set([...prev, id]));
-      if (isPlayingRef.current) await startAmbientSound(id);
+      if (isPlayingRef.current && hasStartedBedsRef.current) await startAmbientSound(id);
     }
   }, [startAmbientSound, stopAmbientSound]);
 
@@ -432,6 +443,9 @@ export function useAudioEngine({
   const startAffirmationPlayback = useCallback(async function playAffirmation(targetIndex: number, visited: Set<number> = new Set()) {
     const items = recordingsRef.current;
     if (items.length === 0) return false;
+    const isRootStart = visited.size === 0;
+    if (isRootStart) affirmationStartIdRef.current += 1;
+    const startId = affirmationStartIdRef.current;
     const normalizedIndex = ((targetIndex % items.length) + items.length) % items.length;
     if (visited.has(normalizedIndex)) return false;
     visited.add(normalizedIndex);
@@ -441,6 +455,7 @@ export function useAudioEngine({
     stopAffirmationSource();
     const ctx = ensureAudioContext();
     const buffer = await loadAffirmationBuffer(target);
+    if (startId !== affirmationStartIdRef.current) return false;
     const gain = affirmationGainRef.current;
     if (!gain) return false;
     if (!buffer) {
@@ -457,7 +472,7 @@ export function useAudioEngine({
       try { source.disconnect(); } catch { /* best effort */ }
       if (!isPlayingRef.current || recordingsRef.current.length === 0) return;
       clearNextTrackTimer();
-      nextTrackTimerRef.current = setTimeout(() => {
+      const playNext = () => {
         void (async () => {
           if (!isPlayingRef.current || recordingsRef.current.length === 0) return;
           const nextIndex = (currentTrackIndexRef.current + 1) % recordingsRef.current.length;
@@ -466,13 +481,81 @@ export function useAudioEngine({
           await audioCtxRef.current?.resume();
           await playAffirmation(nextIndex);
         })();
-      }, trackGapMsRef.current);
+      };
+      const gapMs = Math.max(0, trackGapMsRef.current);
+      if (gapMs <= 0) {
+        playNext();
+      } else {
+        nextTrackTimerRef.current = setTimeout(playNext, gapMs);
+      }
     };
     source.start();
     affirmationSourceRef.current = source;
     setTrackIndex(normalizedIndex);
     return true;
   }, [clearNextTrackTimer, ensureAudioContext, loadAffirmationBuffer, stopAffirmationSource]);
+
+  // Start delay is measured from the play press so buffer load doesn't stack on it.
+  const scheduleFirstAffirmationIfNeeded = useCallback(() => {
+    if (hasStartedFirstAffirmationRef.current) return;
+    if (affirmationSourceRef.current) return;
+    if (firstAffirmationTimerRef.current) return;
+    if (!isPlayingRef.current || recordingsRef.current.length === 0) return;
+
+    const startFirst = () => {
+      firstAffirmationTimerRef.current = null;
+      if (!isPlayingRef.current || affirmationSourceRef.current) return;
+      hasStartedFirstAffirmationRef.current = true;
+      void startAffirmationPlayback(currentTrackIndexRef.current).catch((e) => {
+        console.warn('[audio-engine] Affirmation playback start failed:', e);
+      });
+    };
+
+    const origin = playStartedAtRef.current ?? Date.now();
+    const remaining = Math.max(0, startDelayMsRef.current - (Date.now() - origin));
+    if (remaining <= 0) {
+      startFirst();
+    } else {
+      firstAffirmationTimerRef.current = setTimeout(startFirst, remaining);
+    }
+  }, [startAffirmationPlayback]);
+
+  const startBedAudio = useCallback(async () => {
+    if (shouldPlaySingingBowl) await startBowlPlayback();
+    if (shouldPlayBrainwave) startBinaural();
+    else if (shouldPlayPure) startPure();
+    for (const id of activeAmbientSoundsRef.current) {
+      if (!ambientNodesRef.current.has(id)) {
+        try { await startAmbientSound(id); } catch { /* best effort */ }
+      }
+    }
+  }, [shouldPlaySingingBowl, startBowlPlayback, shouldPlayBrainwave, startBinaural, shouldPlayPure, startPure, startAmbientSound]);
+
+  // Same start-delay clock as the first affirmation: bowl / binaural / ambient wait too.
+  const scheduleBedAudioIfNeeded = useCallback(() => {
+    if (hasStartedBedsRef.current) {
+      void startBedAudio();
+      return;
+    }
+    if (firstBedsTimerRef.current) return;
+
+    const startBeds = () => {
+      firstBedsTimerRef.current = null;
+      if (!isPlayingRef.current) return;
+      hasStartedBedsRef.current = true;
+      void startBedAudio().catch((e) => {
+        console.warn('[audio-engine] Bed audio start failed:', e);
+      });
+    };
+
+    const origin = playStartedAtRef.current ?? Date.now();
+    const remaining = Math.max(0, startDelayMsRef.current - (Date.now() - origin));
+    if (remaining <= 0) {
+      startBeds();
+    } else {
+      firstBedsTimerRef.current = setTimeout(startBeds, remaining);
+    }
+  }, [startBedAudio]);
 
   // ─── Mute toggles ─────────────────────────────────────────────────────────
   const toggleBowlMute = useCallback(() => {
@@ -535,12 +618,15 @@ export function useAudioEngine({
     if (isPlaying) {
       clearNextTrackTimer();
       clearFirstAffirmationTimer();
+      clearFirstBedsTimer();
       pauseAudioEngine();
       pauseSessionTimer();
+      playStartedAtRef.current = null;
       setIsPlaying(false);
       isPlayingRef.current = false;
       return;
     }
+    playStartedAtRef.current = Date.now();
     try {
       const settings = await getAdminPlaybackSettings();
       trackGapMsRef.current = settings.trackGapSec * 1000;
@@ -567,21 +653,11 @@ export function useAudioEngine({
     ]);
     setTimeout(() => { void preloadAmbientBuffers(); }, 4000);
     isPlayingRef.current = true;
-    if (shouldPlaySingingBowl) await startBowlPlayback();
-    if (shouldPlayBrainwave) startBinaural();
-    else if (shouldPlayPure) startPure();
+    scheduleBedAudioIfNeeded();
     try {
       if (!affirmationSourceRef.current && recordingsRef.current.length > 0) {
         if (!hasStartedFirstAffirmationRef.current) {
-          hasStartedFirstAffirmationRef.current = true;
-          clearFirstAffirmationTimer();
-          firstAffirmationTimerRef.current = setTimeout(() => {
-            firstAffirmationTimerRef.current = null;
-            if (!isPlayingRef.current || affirmationSourceRef.current) return;
-            void startAffirmationPlayback(currentTrackIndexRef.current).catch((e) => {
-              console.warn('[audio-engine] Affirmation playback start failed:', e);
-            });
-          }, startDelayMsRef.current);
+          scheduleFirstAffirmationIfNeeded();
         } else {
           await startAffirmationPlayback(currentTrackIndexRef.current);
         }
@@ -589,19 +665,15 @@ export function useAudioEngine({
     } catch (e) {
       console.warn('[audio-engine] Affirmation playback start failed:', e);
     }
-    for (const id of activeAmbientSoundsRef.current) {
-      if (!ambientNodesRef.current.has(id)) {
-        try { await startAmbientSound(id); } catch { /* best effort */ }
-      }
-    }
     startSessionTimer();
     setIsPlaying(true);
   }, [
-    isPlaying, clearNextTrackTimer, clearFirstAffirmationTimer, pauseAudioEngine, pauseSessionTimer,
+    isPlaying, clearNextTrackTimer, clearFirstAffirmationTimer, clearFirstBedsTimer,
+    pauseAudioEngine, pauseSessionTimer,
     ensureAudioContext, shouldPlaySingingBowl, shouldPlayBrainwave,
-    shouldPlayPure, loadBowlBuffer, startBowlPlayback, startBinaural, startPure,
-    startAffirmationPlayback, startAmbientSound, startSessionTimer, preloadAmbientBuffers,
-    createNoiseBuffer,
+    shouldPlayPure, loadBowlBuffer, startAffirmationPlayback,
+    scheduleFirstAffirmationIfNeeded, scheduleBedAudioIfNeeded, startSessionTimer,
+    preloadAmbientBuffers, createNoiseBuffer,
   ]);
 
   const fadeOutAll = useCallback((durationMs: number) => {
@@ -620,13 +692,16 @@ export function useAudioEngine({
   const stopSession = useCallback((): number => {
     clearNextTrackTimer();
     clearFirstAffirmationTimer();
+    clearFirstBedsTimer();
     pauseSessionTimer();
     isPlayingRef.current = false;
     hasStartedFirstAffirmationRef.current = false;
+    hasStartedBedsRef.current = false;
+    playStartedAtRef.current = null;
     setIsPlaying(false);
     closeAudioEngine();
     return sessionElapsedMsRef.current;
-  }, [clearNextTrackTimer, clearFirstAffirmationTimer, closeAudioEngine, pauseSessionTimer]);
+  }, [clearNextTrackTimer, clearFirstAffirmationTimer, clearFirstBedsTimer, closeAudioEngine, pauseSessionTimer]);
 
   // ─── Effects ──────────────────────────────────────────────────────────────
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
@@ -643,7 +718,7 @@ export function useAudioEngine({
     return () => sub.remove();
   }, [isPlaying]);
 
-  // Load admin timing overrides (gap between tracks + first-affirmation delay)
+  // Load admin timing overrides (gap between tracks + start delay for all audio)
   useEffect(() => {
     void getAdminPlaybackSettings().then((settings) => {
       trackGapMsRef.current = settings.trackGapSec * 1000;
@@ -701,10 +776,11 @@ export function useAudioEngine({
       setTrackIndex(0);
       stopAffirmationSource();
       clearNextTrackTimer();
+      clearFirstAffirmationTimer();
       return;
     }
     if (currentTrackIndexRef.current >= recordings.length) setTrackIndex(0);
-  }, [clearNextTrackTimer, recordings, stopAffirmationSource]);
+  }, [clearFirstAffirmationTimer, clearNextTrackTimer, recordings, stopAffirmationSource]);
 
   useEffect(() => {
     let mounted = true;
@@ -737,6 +813,12 @@ export function useAudioEngine({
 
   useEffect(() => {
     if (!isPlaying || recordings.length === 0 || affirmationSourceRef.current) return;
+    if (!hasStartedFirstAffirmationRef.current) {
+      // Recordings often land after play; never skip the start delay here.
+      scheduleFirstAffirmationIfNeeded();
+      return;
+    }
+    if (firstAffirmationTimerRef.current) return;
     const start = async () => {
       try {
         await ensureAudioContext().resume();
@@ -746,16 +828,17 @@ export function useAudioEngine({
       }
     };
     void start();
-  }, [ensureAudioContext, isPlaying, recordings, startAffirmationPlayback]);
+  }, [ensureAudioContext, isPlaying, recordings, scheduleFirstAffirmationIfNeeded, startAffirmationPlayback]);
 
   useEffect(() => {
     return () => {
       clearNextTrackTimer();
       clearFirstAffirmationTimer();
+      clearFirstBedsTimer();
       clearSessionTimer();
       closeAudioEngine();
     };
-  }, [clearNextTrackTimer, clearFirstAffirmationTimer, clearSessionTimer, closeAudioEngine]);
+  }, [clearNextTrackTimer, clearFirstAffirmationTimer, clearFirstBedsTimer, clearSessionTimer, closeAudioEngine]);
 
   useEffect(() => {
     bowlBufferRef.current = null;

@@ -1,13 +1,14 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
-import { View, Text, StyleSheet, Image, Dimensions, Animated, Platform } from "react-native";
+import { View, Text, StyleSheet, Image, Dimensions, Animated } from "react-native";
 import RAnimated, { FadeIn, Easing as REasing } from "react-native-reanimated";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useOnboardingNav } from "./use-onboarding-nav";
 import { usePostHogScreenViewed } from "@/lib/posthog";
-import * as Notifications from "expo-notifications";
 import * as Haptics from "expo-haptics";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { scheduleAffirmationReminder } from "@/lib/affirmation-reminder";
+import {
+  registerForNotificationsAsync,
+  scheduleDailyNotification,
+} from "@/lib/notifications";
 import { Fonts } from "@/constants/theme";
 import { ScalePressable } from "@/components/ScalePressable";
 
@@ -57,16 +58,6 @@ function FadeLetter({ ch, charStyle }: { ch: string; charStyle: object }) {
 const { width, height } = Dimensions.get("window");
 const isSmallDevice = width < 380;
 const isSmallScreen = height < 700;
-
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
 
 export default function Screen17() {
   usePostHogScreenViewed({
@@ -123,24 +114,9 @@ export default function Screen17() {
 
     const requestPermissions = async () => {
       try {
-        const result = await Notifications.requestPermissionsAsync({
-          ios: {
-            allowAlert: true,
-            allowBadge: true,
-            allowSound: true,
-          },
-        });
-        const isGranted =
-          result.ios?.status === Notifications.IosAuthorizationStatus.AUTHORIZED ||
-          result.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
-
-        await AsyncStorage.setItem(
-          "notificationsEnabled",
-          isGranted ? "true" : "false"
-        );
-
+        const isGranted = await registerForNotificationsAsync();
         if (isGranted) {
-          await scheduleAffirmationReminder();
+          await scheduleDailyNotification();
         }
 
         setTimeout(() => {

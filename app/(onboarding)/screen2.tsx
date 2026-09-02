@@ -26,7 +26,7 @@ type Slide = { id: string; image: number; segments: Segment[] };
 type CharToken = { ch: string; bold: boolean };
 type WordToken = { chars: CharToken[]; startIdx: number };
 
-const TYPEWRITER_MS = 28;
+const TYPEWRITER_MS = 18;
 const LETTER_FADE_MS = 480;
 
 function slideToCharTokens(slide: Slide): CharToken[] {

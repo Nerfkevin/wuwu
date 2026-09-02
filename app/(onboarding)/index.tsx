@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import * as SecureStore from "expo-secure-store";
 import * as SplashScreen from "expo-splash-screen";
 import Superwall from "@superwall/react-native-superwall";
+import { identifySuperwallUser } from "@/lib/user-identity";
 
 const ONBOARDING_KEY = "onboarding_completed";
 const SUBSCRIPTION_KEY = "subscription_active";
@@ -27,8 +28,9 @@ export default function OnboardingIndex() {
           return;
         }
 
-        // Live check via Superwall — handles new device, reinstall, external purchase
+        // Live check via Superwall — wait for identify so Superwall doesn't mint its own alias UUID
         try {
+          await identifySuperwallUser();
           const status = await Superwall.shared.getSubscriptionStatus();
           if (status.status === "ACTIVE") {
             await SecureStore.setItemAsync(SUBSCRIPTION_KEY, "true");

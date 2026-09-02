@@ -16,6 +16,7 @@ import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
+import { durationFitsDay } from "./rumination-stats";
 import { usePostHogScreenViewed } from "@/lib/posthog";
 import { ScalePressable } from "@/components/ScalePressable";
 
@@ -34,7 +35,7 @@ type MultiSlide = SlideBase & {
 type SnapSlide = SlideBase & { type: "snap"; options: string[] };
 type Slide = SingleSlide | MultiSlide | SnapSlide;
 
-const TYPEWRITER_MS = 33;
+const TYPEWRITER_MS = 16;
 const LETTER_FADE_MS = 480;
 const SLIDE_DELAY_MS = 300;
 
@@ -445,6 +446,15 @@ export default function Screen5() {
   const [durationSelected, setDurationSelected] = useState<string | null>(null);
   const listRef = useRef<FlatList>(null);
 
+  const freqLabel = (slides[2] as SnapSlide).options[frequencyIdx];
+  const durationSlide = useMemo((): SingleSlide => {
+    const base = slides[3] as SingleSlide;
+    return {
+      ...base,
+      options: base.options.filter((opt) => durationFitsDay(freqLabel, opt)),
+    };
+  }, [freqLabel]);
+
   const dotAnims = useRef(
     slides.map((_, i) => new Animated.Value(i === 0 ? 1 : 0.3))
   ).current;
@@ -599,7 +609,7 @@ export default function Screen5() {
             }}
           />
           <SingleOptions
-            slide={slides[3] as SingleSlide}
+            slide={durationSlide}
             isSlideCurrent={activeIndex === 3}
             revealContent={titleDone}
             selected={durationSelected}

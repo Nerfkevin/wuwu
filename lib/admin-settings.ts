@@ -9,20 +9,23 @@ export const ADMIN_TAP_THRESHOLD = 7;
 
 export const DEFAULT_TRACK_GAP_SEC = 5;
 export const DEFAULT_START_DELAY_SEC = 3;
-export const ADMIN_TIMING_MIN_SEC = 1;
+export const ADMIN_TIMING_MIN_SEC = 0;
 export const ADMIN_TIMING_MAX_SEC = 10;
+export const ADMIN_TIMING_STEP_SEC = 0.1;
 
 export type AdminPlaybackSettings = {
   trackGapSec: number;
+  /** Silence after play before first affirmation, ambient, and frequency audio. */
   startDelaySec: number;
 };
 
 const clampSec = (value: number, fallback: number): number => {
   if (!Number.isFinite(value)) return fallback;
-  return Math.max(
-    ADMIN_TIMING_MIN_SEC,
-    Math.min(ADMIN_TIMING_MAX_SEC, Math.round(value))
-  );
+  const stepped =
+    Math.round(value / ADMIN_TIMING_STEP_SEC) * ADMIN_TIMING_STEP_SEC;
+  // Kill floating-point dust from 0.1 steps (e.g. 1.3000000000000003).
+  const rounded = Math.round(stepped * 10) / 10;
+  return Math.max(ADMIN_TIMING_MIN_SEC, Math.min(ADMIN_TIMING_MAX_SEC, rounded));
 };
 
 export async function isAdminUnlocked(): Promise<boolean> {

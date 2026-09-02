@@ -80,10 +80,12 @@ export default function AmbientModal({
   useEffect(() => {
     if (!visible) return;
     try {
-      ph?.capture('screen_viewed', {
+      const props = {
         screen: 'session/ambient-modal',
         component: 'AmbientModal',
-      });
+      };
+      void ph?.screen?.(props.screen, props);
+      ph?.capture('screen_viewed', props);
     } catch {
       /* */
     }
