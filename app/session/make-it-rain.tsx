@@ -1,8 +1,9 @@
 import React, { memo, useEffect } from 'react';
-import { usePostHogScreenViewed } from '@/lib/posthog';
 import { Dimensions, StyleSheet, View } from 'react-native';
+import { Image } from 'expo-image';
 import Animated, {
   Easing,
+  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -49,12 +50,27 @@ const BILLS: BillConfig[] = Array.from({ length: 16 }, (_, i) => ({
   scale: 0.8 + Math.random() * 0.4,
 }));
 
-const BillItem = memo(({ cfg, speedMultiplier = 1, delayMultiplier }: { cfg: BillConfig; speedMultiplier?: number; delayMultiplier?: number }) => {
+const BillItem = memo(({ cfg, paused, speedMultiplier = 1, delayMultiplier }: {
+  cfg: BillConfig;
+  paused: boolean;
+  speedMultiplier?: number;
+  delayMultiplier?: number;
+}) => {
   const fallY = useSharedValue(FALL_FROM);
-  const swing = useSharedValue(0);  // 0 → 1, alternating
-  const flip = useSharedValue(0);   // 0 → 360, infinite
+  const swing = useSharedValue(0);
+  const flip = useSharedValue(0);
 
   useEffect(() => {
+    if (paused) {
+      cancelAnimation(fallY);
+      cancelAnimation(swing);
+      cancelAnimation(flip);
+      fallY.value = FALL_FROM;
+      swing.value = 0;
+      flip.value = 0;
+      return;
+    }
+
     fallY.value = withDelay(
       cfg.delay / (delayMultiplier ?? speedMultiplier),
       withRepeat(
@@ -84,17 +100,20 @@ const BillItem = memo(({ cfg, speedMultiplier = 1, delayMultiplier }: { cfg: Bil
         false,
       ),
     );
+
+    return () => {
+      cancelAnimation(fallY);
+      cancelAnimation(swing);
+      cancelAnimation(flip);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [paused]);
 
-  const fallStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: fallY.value }],
-  }));
-
-  const swingStyle = useAnimatedStyle(() => {
-    const t = swing.value - 0.5; // -0.5 to 0.5
+  const wrapStyle = useAnimatedStyle(() => {
+    const t = swing.value - 0.5;
     return {
       transform: [
+        { translateY: fallY.value },
         { translateX: t * SWING_AMP * 2 },
         { rotate: `${t * SWING_ROT * 2}deg` },
       ],
@@ -109,35 +128,46 @@ const BillItem = memo(({ cfg, speedMultiplier = 1, delayMultiplier }: { cfg: Bil
   const backFlipStyle = useAnimatedStyle(() => ({
     transform: [{ rotateX: `${flip.value + 180}deg` }, { scale: cfg.scale }],
     backfaceVisibility: 'hidden' as const,
-    position: 'absolute' as const,
-    top: 0,
-    left: 0,
   }));
 
   return (
-    <Animated.View style={[styles.billWrap, { left: cfg.left, opacity: cfg.opacity }, fallStyle]}>
-      <Animated.View style={swingStyle}>
-        <Animated.Image source={FRONT} style={[styles.bill, frontFlipStyle]} resizeMode="contain" />
-        <Animated.Image source={BACK} style={[styles.bill, backFlipStyle]} resizeMode="contain" />
+    <Animated.View
+      style={[styles.billWrap, { left: cfg.left, opacity: cfg.opacity }, wrapStyle]}
+      shouldRasterizeIOS
+      renderToHardwareTextureAndroid
+    >
+      <Animated.View style={[styles.bill, frontFlipStyle]}>
+        <Image source={FRONT} style={styles.bill} contentFit="contain" cachePolicy="memory-disk" />
+      </Animated.View>
+      <Animated.View style={[styles.bill, styles.billBack, backFlipStyle]}>
+        <Image source={BACK} style={styles.bill} contentFit="contain" cachePolicy="memory-disk" />
       </Animated.View>
     </Animated.View>
   );
 });
 BillItem.displayName = 'BillItem';
 
-const MakeItRain = memo(({ speedMultiplier = 1, delayMultiplier }: { speedMultiplier?: number; delayMultiplier?: number }) => {
-  usePostHogScreenViewed({
-    screen: 'session/make-it-rain',
-    component: 'MakeItRain',
-  });
-  return (
+const MakeItRain = memo(({
+  paused = false,
+  speedMultiplier = 1,
+  delayMultiplier,
+}: {
+  paused?: boolean;
+  speedMultiplier?: number;
+  delayMultiplier?: number;
+}) => (
   <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
     {BILLS.map((cfg) => (
-      <BillItem key={cfg.id} cfg={cfg} speedMultiplier={speedMultiplier} delayMultiplier={delayMultiplier} />
+      <BillItem
+        key={cfg.id}
+        cfg={cfg}
+        paused={paused}
+        speedMultiplier={speedMultiplier}
+        delayMultiplier={delayMultiplier}
+      />
     ))}
   </View>
-  );
-});
+));
 MakeItRain.displayName = 'MakeItRain';
 
 export default MakeItRain;
@@ -152,5 +182,10 @@ const styles = StyleSheet.create({
   bill: {
     width: BILL_W,
     height: BILL_H,
+  },
+  billBack: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
   },
 });

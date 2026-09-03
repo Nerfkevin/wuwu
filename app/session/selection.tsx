@@ -10,7 +10,6 @@ import {
   Dimensions,
   Pressable,
   ScrollView,
-  Modal,
   Animated,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
@@ -251,7 +250,6 @@ export default function SelectionScreen() {
 
   const handleStartWithPlaylist = async () => {
     await setLastPlaylistId(chosenPlaylistId);
-    setShowPlaylistModal(false);
     try {
       ph?.capture('session_started', {
         background: selectedBg,
@@ -404,13 +402,9 @@ export default function SelectionScreen() {
         </TouchableOpacity>
       </Animated.View>
 
-      <Modal
-        visible={showPlaylistModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowPlaylistModal(false)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowPlaylistModal(false)}>
+      {showPlaylistModal ? (
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowPlaylistModal(false)} />
           <Pressable style={styles.modalBox} onPress={() => {}}>
             <Text style={styles.modalTitle}>choose affirmation track</Text>
 
@@ -463,8 +457,8 @@ export default function SelectionScreen() {
               <Text style={styles.startBtnText}>continue</Text>
             </TouchableOpacity>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -636,11 +630,12 @@ const styles = StyleSheet.create({
     color: '#000000',
   },
   modalOverlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.75)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
+    zIndex: 20,
   },
   modalBox: {
     width: '100%',

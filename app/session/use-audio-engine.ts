@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState } from 'react-native';
+import { AppState, InteractionManager } from 'react-native';
 import { AudioBuffer, AudioContext } from '@/lib/audio-api-core';
 import * as Haptics from 'expo-haptics';
 import { getSavedRecordings, SavedRecording } from '@/lib/recording-store';
@@ -26,11 +26,18 @@ import {
   getAdminPlaybackSettings,
 } from '@/lib/admin-settings';
 
+const HEAVY_AMBIENT_IDS = new Set<AmbientSoundId>([
+  'rain', 'thunder', 'ocean', 'birds', 'crickets', 'campfire',
+]);
+
 const getAmbientGainMul = (id: AmbientSoundId) => {
   if (NOISE_IDS.has(id)) return NOISE_AMBIENT_GAIN_MULTIPLIER;
   if (id === 'money') return MONEY_AMBIENT_GAIN_MULTIPLIER;
   return 1;
 };
+
+const isLightAmbient = (id: AmbientSoundId) =>
+  id === 'money' || NOISE_IDS.has(id);
 
 const triggerHaptic = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
@@ -96,7 +103,7 @@ export function useAudioEngine({
   const activeAmbientSoundsRef = useRef<Set<AmbientSoundId>>(new Set());
   const ambientNodesRef = useRef<Map<AmbientSoundId, AmbientNode>>(new Map());
   const ambientBuffersRef = useRef<Map<AmbientSoundId, AudioBuffer>>(new Map());
-  const ambientPreloadedRef = useRef(false);
+  const ambientDecodeRef = useRef<Map<AmbientSoundId, Promise<AudioBuffer | null>>>(new Map());
   const bowlBufferRef = useRef<AudioBuffer | null>(null);
   const affirmationBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
 
@@ -293,21 +300,41 @@ export function useAudioEngine({
     try { gain.disconnect(); } catch { /* best effort */ }
   }, []);
 
+  const loadAmbientBuffer = useCallback(async (id: AmbientSoundId) => {
+    const cached = ambientBuffersRef.current.get(id);
+    if (cached) return cached;
+    const inflight = ambientDecodeRef.current.get(id);
+    if (inflight) return inflight;
+
+    const decode = (async () => {
+      try {
+        if (NOISE_IDS.has(id)) {
+          const buffer = createNoiseBuffer(id as 'white' | 'pink' | 'brown');
+          ambientBuffersRef.current.set(id, buffer);
+          return buffer;
+        }
+        const entry = NATURE_SOUNDS.find((s) => s.id === id);
+        if (!entry?.asset) return null;
+        const buffer = await ensureAudioContext().decodeAudioData(entry.asset);
+        ambientBuffersRef.current.set(id, buffer);
+        return buffer;
+      } catch (e) {
+        console.warn(`[audio-engine] Failed to decode ambient ${id}:`, e);
+        return null;
+      } finally {
+        ambientDecodeRef.current.delete(id);
+      }
+    })();
+
+    ambientDecodeRef.current.set(id, decode);
+    return decode;
+  }, [createNoiseBuffer, ensureAudioContext]);
+
   const startAmbientSound = useCallback(async (id: AmbientSoundId) => {
     if (ambientNodesRef.current.has(id)) return;
+    const buffer = await loadAmbientBuffer(id);
+    if (!buffer || !isPlayingRef.current || ambientNodesRef.current.has(id)) return;
     const ctx = ensureAudioContext();
-    let buffer = ambientBuffersRef.current.get(id);
-    if (!buffer) {
-      if (NOISE_IDS.has(id)) {
-        buffer = createNoiseBuffer(id as 'white' | 'pink' | 'brown');
-        ambientBuffersRef.current.set(id, buffer);
-      } else {
-        const entry = NATURE_SOUNDS.find((s) => s.id === id);
-        if (!entry?.asset) return;
-        buffer = await ctx.decodeAudioData(entry.asset);
-        ambientBuffersRef.current.set(id, buffer);
-      }
-    }
     const gain = ctx.createGain();
     const noiseMul = getAmbientGainMul(id);
     gain.gain.setValueAtTime(0, ctx.currentTime);
@@ -322,22 +349,18 @@ export function useAudioEngine({
     source.connect(gain);
     source.start();
     ambientNodesRef.current.set(id, { source, gain });
-  }, [createNoiseBuffer, ensureAudioContext]);
+  }, [ensureAudioContext, loadAmbientBuffer]);
 
-  const preloadAmbientBuffers = useCallback(async () => {
-    if (ambientPreloadedRef.current) return;
-    ambientPreloadedRef.current = true;
-    const ctx = ensureAudioContext();
-    await Promise.allSettled(
-      NATURE_SOUNDS.map(async (entry) => {
-        if (!entry.asset || ambientBuffersRef.current.has(entry.id)) return;
-        try {
-          const buffer = await ctx.decodeAudioData(entry.asset);
-          ambientBuffersRef.current.set(entry.id, buffer);
-        } catch { /* best effort */ }
-      })
-    );
-  }, [ensureAudioContext]);
+  // Warm only cheap buffers during the start-delay window. Rain/birds/etc are 5–14MB
+  // and will stall JS + the cash animation if they decode on play.
+  const warmSessionBuffers = useCallback(() => {
+    if (shouldPlaySingingBowl) void loadBowlBuffer();
+    for (const id of activeAmbientSoundsRef.current) {
+      if (isLightAmbient(id)) void loadAmbientBuffer(id);
+    }
+    const current = recordingsRef.current[currentTrackIndexRef.current];
+    if (current) void loadAffirmationBuffer(current);
+  }, [loadAffirmationBuffer, loadAmbientBuffer, loadBowlBuffer, shouldPlaySingingBowl]);
 
   const toggleAmbientSound = useCallback(async (id: AmbientSoundId) => {
     triggerHaptic();
@@ -351,7 +374,13 @@ export function useAudioEngine({
       });
     } else {
       setActiveAmbientSounds((prev) => new Set([...prev, id]));
-      if (isPlayingRef.current && hasStartedBedsRef.current) await startAmbientSound(id);
+      if (isPlayingRef.current && hasStartedBedsRef.current) {
+        if (HEAVY_AMBIENT_IDS.has(id)) {
+          InteractionManager.runAfterInteractions(() => { void startAmbientSound(id); });
+        } else {
+          void startAmbientSound(id);
+        }
+      }
     }
   }, [startAmbientSound, stopAmbientSound]);
 
@@ -374,6 +403,7 @@ export function useAudioEngine({
     masterGainRef.current = null;
     bowlBufferRef.current = null;
     affirmationBuffersRef.current.clear();
+    ambientDecodeRef.current.clear();
     if (audioCtxRef.current) {
       audioCtxRef.current.close();
       audioCtxRef.current = null;
@@ -521,14 +551,18 @@ export function useAudioEngine({
   }, [startAffirmationPlayback]);
 
   const startBedAudio = useCallback(async () => {
-    if (shouldPlaySingingBowl) await startBowlPlayback();
     if (shouldPlayBrainwave) startBinaural();
     else if (shouldPlayPure) startPure();
+    if (shouldPlaySingingBowl) void startBowlPlayback();
+    const heavy: AmbientSoundId[] = [];
     for (const id of activeAmbientSoundsRef.current) {
-      if (!ambientNodesRef.current.has(id)) {
-        try { await startAmbientSound(id); } catch { /* best effort */ }
-      }
+      if (HEAVY_AMBIENT_IDS.has(id)) heavy.push(id);
+      else void startAmbientSound(id);
     }
+    if (heavy.length === 0) return;
+    InteractionManager.runAfterInteractions(() => {
+      for (const id of heavy) void startAmbientSound(id);
+    });
   }, [shouldPlaySingingBowl, startBowlPlayback, shouldPlayBrainwave, startBinaural, shouldPlayPure, startPure, startAmbientSound]);
 
   // Same start-delay clock as the first affirmation: bowl / binaural / ambient wait too.
@@ -627,53 +661,33 @@ export function useAudioEngine({
       return;
     }
     playStartedAtRef.current = Date.now();
-    try {
-      const settings = await getAdminPlaybackSettings();
-      trackGapMsRef.current = settings.trackGapSec * 1000;
-      startDelayMsRef.current = settings.startDelaySec * 1000;
-    } catch { /* keep existing refs */ }
-    const ctx = ensureAudioContext();
-    const activeIds = [...activeAmbientSoundsRef.current] as AmbientSoundId[];
-    await Promise.all([
-      ctx.resume(),
-      shouldPlaySingingBowl ? loadBowlBuffer() : Promise.resolve(),
-      ...activeIds.map(async (id) => {
-        if (ambientBuffersRef.current.has(id)) return;
-        if (NOISE_IDS.has(id)) {
-          ambientBuffersRef.current.set(id, createNoiseBuffer(id as 'white' | 'pink' | 'brown'));
-          return;
-        }
-        const entry = NATURE_SOUNDS.find((s) => s.id === id);
-        if (!entry?.asset) return;
-        try {
-          const buf = await ctx.decodeAudioData(entry.asset);
-          ambientBuffersRef.current.set(id, buf);
-        } catch { /* best effort */ }
-      }),
-    ]);
-    setTimeout(() => { void preloadAmbientBuffers(); }, 4000);
     isPlayingRef.current = true;
+    setIsPlaying(true);
+    startSessionTimer();
+    const ctx = ensureAudioContext();
+    try {
+      await ctx.resume();
+    } catch { /* best effort */ }
+    if (!isPlayingRef.current) return;
+    warmSessionBuffers();
     scheduleBedAudioIfNeeded();
     try {
       if (!affirmationSourceRef.current && recordingsRef.current.length > 0) {
         if (!hasStartedFirstAffirmationRef.current) {
           scheduleFirstAffirmationIfNeeded();
         } else {
-          await startAffirmationPlayback(currentTrackIndexRef.current);
+          void startAffirmationPlayback(currentTrackIndexRef.current);
         }
       }
     } catch (e) {
       console.warn('[audio-engine] Affirmation playback start failed:', e);
     }
-    startSessionTimer();
-    setIsPlaying(true);
   }, [
     isPlaying, clearNextTrackTimer, clearFirstAffirmationTimer, clearFirstBedsTimer,
     pauseAudioEngine, pauseSessionTimer,
-    ensureAudioContext, shouldPlaySingingBowl, shouldPlayBrainwave,
-    shouldPlayPure, loadBowlBuffer, startAffirmationPlayback,
+    ensureAudioContext, startAffirmationPlayback,
     scheduleFirstAffirmationIfNeeded, scheduleBedAudioIfNeeded, startSessionTimer,
-    preloadAmbientBuffers, createNoiseBuffer,
+    warmSessionBuffers,
   ]);
 
   const fadeOutAll = useCallback((durationMs: number) => {

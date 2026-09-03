@@ -1,6 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View, Pressable, Dimensions } from 'react-native';
-import { ScalePressable } from '@/components/ScalePressable';
 import { LinearGradient } from 'expo-linear-gradient';
 import Background from 'react-native-ambient-background';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -9,20 +8,17 @@ import { getProfileStats, recordPlaybackSession } from '@/lib/profile-stats';
 import Animated, {
   cancelAnimation,
   Easing,
-  interpolateColor,
+  interpolate,
   useSharedValue,
   useAnimatedStyle,
   runOnJS,
   withTiming,
 } from 'react-native-reanimated';
-import AnimatedGlow, { GlowEvent, PresetConfig } from '@/lib/animated-glow';
+import AnimatedGlow, { type PresetConfig } from '@/lib/animated-glow';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import AffirmationCard from '../add/components/affirmation-card';
-import { getPillarColor } from '@/constants/affirmations';
 import { Colors, Fonts } from '@/constants/theme';
-import { GlowPresets } from '@/constants/glow';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAudioEngine } from './use-audio-engine';
 import AmbientModal from './ambient-modal';
@@ -33,15 +29,73 @@ import {
   BINAURAL_BEATS,
   BOWL_AUDIO_BY_FREQUENCY,
   BRAINWAVE_LABELS,
-  withAlpha,
 } from './playback-constants';
 import { usePostHog, usePostHogScreenViewed } from '@/lib/posthog';
 
 const { width: screenWidth } = Dimensions.get('window');
 const isSmallDevice = screenWidth < 380;
+const isShortDevice = height < 720;
 
-const triggerHaptic = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-const triggerFinishHaptic = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+const ORB_PURPLE_DEEP = '#6B21CC';
+const ORB_PURPLE = '#7C3AED';
+const ORB_PURPLE_MID = '#A855F7';
+const ORB_PURPLE_SOFT = '#C084FC';
+const ORB_PURPLE_LIGHT = '#E9D5FF';
+
+const ORB_SIZE = Math.round(
+  Math.min(
+    screenWidth - (isSmallDevice ? 48 : 64),
+    height * (isShortDevice ? 0.42 : 0.34),
+    isShortDevice ? 304 : 320
+  )
+);
+const ORB_RADIUS = ORB_SIZE / 2;
+const VOLUME_ICON_SLOT = 36;
+const VOLUME_ROW_GAP = 10;
+
+const orbGlowPreset: PresetConfig = {
+  metadata: { name: 'Orb Ring', textColor: '#FFFFFF', category: 'Custom', tags: [] },
+  states: [
+    {
+      name: 'default',
+      preset: {
+        cornerRadius: ORB_RADIUS,
+        outlineWidth: 1.5,
+        borderColor: [ORB_PURPLE_SOFT, ORB_PURPLE_DEEP, ORB_PURPLE_MID, ORB_PURPLE_LIGHT, ORB_PURPLE_SOFT],
+        backgroundColor: 'transparent',
+        animationSpeed: 1.2,
+        borderSpeedMultiplier: 1,
+        glowLayers: [
+          {
+            // @ts-ignore: glowPlacement is supported but types might be outdated
+            glowPlacement: 'behind',
+            colors: [ORB_PURPLE_SOFT, ORB_PURPLE, ORB_PURPLE_DEEP, ORB_PURPLE_MID],
+            glowSize: isSmallDevice ? 10 : 14,
+            opacity: 0.52,
+            speedMultiplier: 1,
+            coverage: 1,
+          },
+          {
+            // @ts-ignore: glowPlacement is supported but types might be outdated
+            glowPlacement: 'behind',
+            colors: [ORB_PURPLE_LIGHT, ORB_PURPLE_MID, ORB_PURPLE_DEEP, ORB_PURPLE_SOFT],
+            glowSize: 4,
+            opacity: 0.8,
+            speedMultiplier: 0.8,
+            coverage: 1,
+          },
+        ],
+      },
+    },
+  ],
+};
+
+const triggerHaptic = () => {
+  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+};
+const triggerFinishHaptic = () => {
+  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+};
 
 export default function PlaybackScreen() {
   usePostHogScreenViewed({
@@ -57,12 +111,12 @@ export default function PlaybackScreen() {
     text?: string; freq?: string; bg?: string; brainwave?: string; color?: string; playlistId?: string;
   }>();
   const insets = useSafeAreaInsets();
-  const [glowState, setGlowState] = useState<GlowEvent>('default');
   const [showAmbientModal, setShowAmbientModal] = useState(false);
+  const [volumeOpen, setVolumeOpen] = useState(false);
+  const [volumeTrackWidth, setVolumeTrackWidth] = useState(0);
   const ambientBtnScale = useSharedValue(1);
   const ambientBtnStyle = useAnimatedStyle(() => ({ transform: [{ scale: ambientBtnScale.value }] }));
   const finishScale = useSharedValue(1);
-  const finishButtonStyle = useAnimatedStyle(() => ({ transform: [{ scale: finishScale.value }] }));
 
   // ─── Derived params ───────────────────────────────────────────────────────
   const selectedFrequency = typeof freq === 'string' && freq in BOWL_AUDIO_BY_FREQUENCY ? freq : '528';
@@ -81,7 +135,7 @@ export default function PlaybackScreen() {
   // ─── Audio engine ─────────────────────────────────────────────────────────
   const {
     isPlaying, isBowlMuted, isOscMuted, activeAmbientSounds,
-    volume, recordings, currentTrackIndex, completedSetCount, sessionElapsedMs,
+    volume, recordings, currentTrackIndex, sessionElapsedMs,
     handlePlayToggle, stopSession, fadeOutAll, toggleBowlMute, toggleOscMute,
     toggleAmbientSound, updateVolume, setVolumeImmediate,
     ambientVolumes, updateAmbientVolume,
@@ -92,7 +146,7 @@ export default function PlaybackScreen() {
     shouldPlaySingingBowl,
     shouldPlayBrainwave,
     shouldPlayPure,
-    playlistId: typeof playlistId === 'string' ? playlistId : undefined,
+    ...(typeof playlistId === 'string' ? { playlistId } : {}),
   });
 
   useEffect(() => {
@@ -109,36 +163,16 @@ export default function PlaybackScreen() {
   // ─── Message display ──────────────────────────────────────────────────────
   const hasTrackMessage = recordings.length > 0 && !!recordings[currentTrackIndex]?.text;
   const message = hasTrackMessage ? recordings[currentTrackIndex].text : fallbackMessage;
-  const currentRecording = recordings[currentTrackIndex];
-  const messagePillarColor = getPillarColor(currentRecording?.pillar, selectedColor);
 
   // ─── Animation state ──────────────────────────────────────────────────────
   const volumeProgress = useSharedValue(AFFIRMATION_DEFAULT_VOLUME_PERCENT / 100);
+  const volumeOpenSV = useSharedValue(0);
   const playScale = useSharedValue(1);
   const messageOpacity = useSharedValue(1);
   const messageTranslateY = useSharedValue(0);
-  const cardColorProgress = useSharedValue(1);
   const [displayMessage, setDisplayMessage] = useState(fallbackMessage);
-  const [cardGlowState, setCardGlowState] = useState<GlowEvent>('default');
-  const [resolvedCardColor, setResolvedCardColor] = useState<string>(selectedColor);
-  const [cardColorRange, setCardColorRange] = useState({ from: selectedColor, to: selectedColor });
   const sliderWidthSV = useSharedValue(0);
   const lastVolumeCommitMsSV = useSharedValue(0);
-
-  const cardBorderTransitionColors = useMemo(
-    () => [
-      withAlpha(cardColorRange.from, 0.82),
-      withAlpha(cardColorRange.to, 0.4),
-      withAlpha(cardColorRange.to, 0.82),
-    ],
-    [cardColorRange.from, cardColorRange.to]
-  );
-
-  const finalizeCardColorTransition = useCallback((nextColor: string) => {
-    setResolvedCardColor(nextColor);
-    setCardColorRange({ from: nextColor, to: nextColor });
-    setCardGlowState('default');
-  }, []);
 
   useEffect(() => {
     if (displayMessage === message) return;
@@ -154,23 +188,6 @@ export default function PlaybackScreen() {
     });
   }, [displayMessage, message, messageOpacity, messageTranslateY]);
 
-  useEffect(() => {
-    if (resolvedCardColor === messagePillarColor) return;
-    cancelAnimation(cardColorProgress);
-    setCardGlowState('default');
-    setCardColorRange({ from: resolvedCardColor, to: messagePillarColor });
-    cardColorProgress.value = 0;
-    requestAnimationFrame(() => setCardGlowState('hover'));
-    cardColorProgress.value = withTiming(
-      1,
-      { duration: 1100, easing: Easing.inOut(Easing.cubic) },
-      (finished) => {
-        if (!finished) return;
-        runOnJS(finalizeCardColorTransition)(messagePillarColor);
-      }
-    );
-  }, [cardColorProgress, finalizeCardColorTransition, messagePillarColor, resolvedCardColor]);
-
   // Sync slider position when volume is restored from storage
   useEffect(() => {
     volumeProgress.value = volume / 100;
@@ -181,31 +198,35 @@ export default function PlaybackScreen() {
   // React state commits throttled to ~10Hz so the label updates smoothly
   // without thrashing the whole screen re-render.
   const VOLUME_COMMIT_INTERVAL_MS = 100;
-  const gesture = Gesture.Pan()
-    .onStart((e) => {
-      runOnJS(triggerHaptic)();
-      if (sliderWidthSV.value <= 0) return;
-      const p = Math.max(0.01, Math.min(1, e.x / sliderWidthSV.value));
-      volumeProgress.value = p;
-      lastVolumeCommitMsSV.value = Date.now();
-      runOnJS(updateVolume)(p);
-    })
-    .onUpdate((e) => {
-      if (sliderWidthSV.value <= 0) return;
-      const p = Math.max(0.01, Math.min(1, e.x / sliderWidthSV.value));
-      volumeProgress.value = p;
-      runOnJS(setVolumeImmediate)(p);
-      const now = Date.now();
-      if (now - lastVolumeCommitMsSV.value >= VOLUME_COMMIT_INTERVAL_MS) {
-        lastVolumeCommitMsSV.value = now;
-        runOnJS(updateVolume)(p);
-      }
-    })
-    .onEnd((e) => {
-      if (sliderWidthSV.value <= 0) return;
-      const p = Math.max(0.01, Math.min(1, e.x / sliderWidthSV.value));
-      runOnJS(updateVolume)(p);
-    });
+  const gesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .onStart((e) => {
+          runOnJS(triggerHaptic)();
+          if (sliderWidthSV.value <= 0) return;
+          const p = Math.max(0.01, Math.min(1, e.x / sliderWidthSV.value));
+          volumeProgress.value = p;
+          lastVolumeCommitMsSV.value = Date.now();
+          runOnJS(updateVolume)(p);
+        })
+        .onUpdate((e) => {
+          if (sliderWidthSV.value <= 0) return;
+          const p = Math.max(0.01, Math.min(1, e.x / sliderWidthSV.value));
+          volumeProgress.value = p;
+          runOnJS(setVolumeImmediate)(p);
+          const now = Date.now();
+          if (now - lastVolumeCommitMsSV.value >= VOLUME_COMMIT_INTERVAL_MS) {
+            lastVolumeCommitMsSV.value = now;
+            runOnJS(updateVolume)(p);
+          }
+        })
+        .onEnd((e) => {
+          if (sliderWidthSV.value <= 0) return;
+          const p = Math.max(0.01, Math.min(1, e.x / sliderWidthSV.value));
+          runOnJS(updateVolume)(p);
+        }),
+    [setVolumeImmediate, sliderWidthSV, updateVolume, volumeProgress, lastVolumeCommitMsSV]
+  );
 
   // ─── Animated styles ──────────────────────────────────────────────────────
   const sliderStyle = useAnimatedStyle(() => ({ width: volumeProgress.value * sliderWidthSV.value }));
@@ -216,46 +237,39 @@ export default function PlaybackScreen() {
     opacity: messageOpacity.value,
     transform: [{ translateY: messageTranslateY.value }],
   }));
-  const cardAnimatedStyle = useAnimatedStyle(() => ({
-    borderColor: interpolateColor(cardColorProgress.value, [0, 0.5, 1], cardBorderTransitionColors),
-  }), [cardBorderTransitionColors]);
+  const volumeRevealStyle = useAnimatedStyle(() => ({
+    opacity: volumeOpenSV.value,
+  }));
+  const finishFadeStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(volumeOpenSV.value, [0, 1], [1, 0]),
+    transform: [{ scale: finishScale.value }],
+  }));
 
-  const cardGlowPreset = useMemo<PresetConfig>(() => ({
-    metadata: { name: 'Affirmation Card Transition', textColor: '#FFFFFF', category: 'Custom', tags: [] },
-    states: [
-      {
-        name: 'default',
-        preset: {
-          cornerRadius: 28,
-          outlineWidth: 0,
-          glowLayers: [{ colors: [cardColorRange.from, cardColorRange.from], opacity: 0.6, glowSize: 10 }],
-        },
-      },
-      {
-        name: 'hover',
-        transition: 1100,
-        preset: {
-          glowLayers: [{ colors: [cardColorRange.to, cardColorRange.to], opacity: 0.66, glowSize: 12 }],
-        },
-      },
-    ],
-  }), [cardColorRange.from, cardColorRange.to]);
+  const toggleVolumeSlider = () => {
+    triggerHaptic();
+    const next = !volumeOpen;
+    setVolumeOpen(next);
+    volumeOpenSV.value = withTiming(next ? 1 : 0, {
+      duration: 280,
+      easing: Easing.inOut(Easing.cubic),
+    });
+  };
 
   const makeItRainActive = activeAmbientSounds.has('money');
 
-  // ─── Derived display values ───────────────────────────────────────────────
-  const totalMessages = recordings.length;
-  const progressLabel =
-    totalMessages > 0
-      ? `${Math.min(currentTrackIndex + 1, totalMessages)}/${totalMessages}/${completedSetCount + 1}`
-      : '0/0/1';
   const totalElapsedSec = Math.floor(sessionElapsedMs / 1000);
   const sessionTimerLabel = `${String(Math.floor(totalElapsedSec / 60)).padStart(2, '0')}:${String(totalElapsedSec % 60).padStart(2, '0')}`;
   const volumeLabel = volume <= 1 ? 'Subliminal' : `${volume}%`;
-  const bowlIconColor = !isBowlMuted ? selectedColor : Colors.textSecondary;
-  const bowlIconName = !isBowlMuted ? 'volume-high' : 'volume-mute';
-  const oscIconColor = !isOscMuted ? selectedColor : Colors.textSecondary;
-  const oscIconName = !isOscMuted ? 'volume-high' : 'volume-mute';
+  const sessionHzLabel = shouldPlayBrainwave
+    ? `${BINAURAL_BEATS[selectedBrainwave] ?? BINAURAL_BEATS.alpha} Hz`
+    : `${selectedFrequency} Hz`;
+  const sessionBackgroundLabel = shouldPlayBrainwave
+    ? (BRAINWAVE_LABELS[selectedBrainwave] ?? selectedBrainwave)
+    : shouldPlayPure
+    ? 'Pure'
+    : selectedBackground;
+  const sessionSoundMuted = shouldPlayBrainwave || shouldPlayPure ? isOscMuted : isBowlMuted;
+  const onToggleSessionSound = shouldPlayBrainwave || shouldPlayPure ? toggleOscMute : toggleBowlMute;
 
   const handleFinish = async () => {
     fadeOutAll(900);
@@ -300,140 +314,97 @@ export default function PlaybackScreen() {
           style={StyleSheet.absoluteFillObject}
         />
         <SafeAreaView
-          style={[styles.safeArea, { paddingTop: insets.top + 6, paddingBottom: insets.bottom + 24 }]}
+          style={[styles.safeArea, { paddingTop: insets.top + 6, paddingBottom: insets.bottom + 10 }]}
           edges={[]}
         >
           <View style={styles.brandTitleWrap}>
             <Text style={styles.brandTitle}>Wu-Wu</Text>
-          </View>
-
-          <View style={styles.header}>
-            <View style={styles.headerTopRow}>
-              <View style={styles.headerLeftCol}>
-                <LinearGradient
-                  colors={[
-                    'rgba(200, 200, 205, 0)',
-                    'rgba(200, 200, 205, 0.35)',
-                    'rgba(220, 220, 225, 0.85)',
-                    'rgba(200, 200, 205, 0.35)',
-                    'rgba(200, 200, 205, 0)',
-                  ]}
-                  locations={[0, 0.22, 0.5, 0.78, 1]}
-                  start={{ x: 0, y: 0.5 }}
-                  end={{ x: 1, y: 0.5 }}
-                  style={[styles.headerTaperLine, styles.headerTaperLineLeft]}
-                />
-                <Text style={styles.headerLabel}>Affirmation</Text>
-                <Text style={styles.headerValue}>{progressLabel}</Text>
-              </View>
-              <View style={styles.headerRight}>
-                <View style={styles.headerRightInner}>
-                  <LinearGradient
-                    colors={[
-                      'rgba(200, 200, 205, 0)',
-                      'rgba(200, 200, 205, 0.35)',
-                      'rgba(220, 220, 225, 0.85)',
-                      'rgba(200, 200, 205, 0.35)',
-                      'rgba(200, 200, 205, 0)',
-                    ]}
-                    locations={[0, 0.22, 0.5, 0.78, 1]}
-                    start={{ x: 0, y: 0.5 }}
-                    end={{ x: 1, y: 0.5 }}
-                    style={[styles.headerTaperLine, styles.headerTaperLineRight]}
-                  />
-                  {shouldPlayBrainwave ? (
-                    <ScalePressable style={styles.soundToggle} onPress={toggleOscMute} scaleTo={0.94}>
-                      <Ionicons name={oscIconName} size={16} color={oscIconColor} />
-                      <Text style={[styles.headerLabel, { color: oscIconColor }]}>
-                        {BINAURAL_BEATS[selectedBrainwave] ?? BINAURAL_BEATS.alpha} Hz
-                      </Text>
-                    </ScalePressable>
-                  ) : shouldPlayPure ? (
-                    <ScalePressable style={styles.soundToggle} onPress={toggleOscMute} scaleTo={0.94}>
-                      <Ionicons name={oscIconName} size={16} color={oscIconColor} />
-                      <Text style={[styles.headerLabel, { color: oscIconColor }]}>{selectedFrequency} Hz</Text>
-                    </ScalePressable>
-                  ) : (
-                    <ScalePressable style={styles.soundToggle} onPress={toggleBowlMute} scaleTo={0.94}>
-                      <Ionicons name={bowlIconName} size={16} color={bowlIconColor} />
-                      <Text style={[styles.headerLabel, { color: bowlIconColor }]}>{selectedFrequency} Hz</Text>
-                    </ScalePressable>
-                  )}
-                  <Text style={styles.headerValue}>
-                    {shouldPlayBrainwave
-                      ? (BRAINWAVE_LABELS[selectedBrainwave] ?? selectedBrainwave)
-                      : shouldPlayPure
-                      ? 'Pure'
-                      : selectedBackground}
-                  </Text>
-                </View>
-              </View>
-            </View>
-            <View style={styles.headerRowEnd}>
-              <Animated.View style={ambientBtnStyle}>
-                <Pressable
-                  style={styles.ambientButton}
-                  onPress={() => setShowAmbientModal(true)}
-                  onPressIn={() => {
-                    triggerHaptic();
-                    ambientBtnScale.value = withTiming(0.85, { duration: 100, easing: Easing.out(Easing.quad) });
-                  }}
-                  onPressOut={() => {
-                    ambientBtnScale.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.back(2)) });
-                  }}
-                >
-                  <MaterialCommunityIcons name="flower-outline" size={18} color="#000" />
-                </Pressable>
-              </Animated.View>
-            </View>
+            <Animated.View style={[styles.ambientBtnWrap, ambientBtnStyle]}>
+              <Pressable
+                style={styles.iconRing}
+                onPress={() => setShowAmbientModal(true)}
+                onPressIn={() => {
+                  triggerHaptic();
+                  ambientBtnScale.value = withTiming(0.85, { duration: 100, easing: Easing.out(Easing.quad) });
+                }}
+                onPressOut={() => {
+                  ambientBtnScale.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.back(2)) });
+                }}
+              >
+                <MaterialCommunityIcons name="flower" size={18} color={ORB_PURPLE_SOFT} />
+              </Pressable>
+            </Animated.View>
           </View>
 
           {/* Main content */}
           <View style={styles.contentContainer}>
-            <View style={styles.cardGlowWrapper}>
-              <AnimatedGlow preset={cardGlowPreset} activeState={cardGlowState}>
-                <AffirmationCard
-                  useGlow={false}
-                  borderColor={resolvedCardColor}
-                  wrapperStyle={styles.cardContainer}
-                  cardStyle={cardAnimatedStyle}
-                >
-                  <Animated.Text style={[styles.affirmationText, messageAnimatedStyle]}>
-                    {`"${displayMessage}"`}
-                  </Animated.Text>
-                </AffirmationCard>
+            <View style={styles.cardGlowWrapper} pointerEvents="box-none">
+              <AnimatedGlow preset={orbGlowPreset} activeState="default">
+                <View style={styles.orbContainer}>
+                  <View style={styles.orbCard}>
+                    <LinearGradient
+                      colors={['rgba(192, 132, 252, 0.2)', 'rgba(88, 28, 135, 0.12)', 'rgba(10, 0, 13, 0.18)']}
+                      locations={[0, 0.55, 1]}
+                      style={StyleSheet.absoluteFillObject}
+                      pointerEvents="none"
+                    />
+                    <Animated.Text
+                      style={[styles.affirmationText, messageAnimatedStyle]}
+                      numberOfLines={5}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.55}
+                    >
+                      {displayMessage}
+                    </Animated.Text>
+                  </View>
+                </View>
               </AnimatedGlow>
             </View>
             <View style={styles.controlsContainer}>
-              <AnimatedGlow
-                preset={GlowPresets.chakra(32, [Colors.chakra.orange, Colors.chakra.orange], 8, 5)}
-                activeState={glowState}
-              >
-                <Animated.View style={playButtonAnimatedStyle}>
-                  <Pressable
-                    style={styles.playButton}
-                    onPress={() => { void handlePlayToggle(); }}
-                    onPressIn={() => {
-                      triggerHaptic();
-                      playScale.value = withTiming(0.88, { duration: 80 });
-                      setGlowState('press');
-                    }}
-                    onPressOut={() => {
-                      playScale.value = withTiming(1, { duration: 120 });
-                      setGlowState('default');
-                    }}
-                  >
-                    <Ionicons name={isPlaying ? 'pause' : 'play'} size={32} color="#000" />
-                  </Pressable>
-                </Animated.View>
-              </AnimatedGlow>
+              <Animated.View style={playButtonAnimatedStyle}>
+                <Pressable
+                  style={styles.playButton}
+                  hitSlop={12}
+                  onPress={() => { void handlePlayToggle(); }}
+                  onPressIn={() => {
+                    triggerHaptic();
+                    playScale.value = withTiming(0.88, { duration: 80 });
+                  }}
+                  onPressOut={() => {
+                    playScale.value = withTiming(1, { duration: 120 });
+                  }}
+                >
+                  <Ionicons
+                    name={isPlaying ? 'pause' : 'play'}
+                    size={isSmallDevice ? 22 : 26}
+                    color={ORB_PURPLE_SOFT}
+                    style={!isPlaying ? { marginLeft: 3 } : undefined}
+                  />
+                </Pressable>
+              </Animated.View>
               <Text style={styles.timerText}>{sessionTimerLabel}</Text>
             </View>
           </View>
 
           {/* Footer */}
           <View style={styles.footer}>
-            <Animated.View style={finishButtonStyle}>
+            <Pressable
+              onPress={toggleVolumeSlider}
+              hitSlop={12}
+              style={styles.volumeIconHit}
+            >
+              <View style={styles.iconRing}>
+                <MaterialCommunityIcons
+                  name="head-flash"
+                  size={18}
+                  color={ORB_PURPLE_SOFT}
+                />
+              </View>
+            </Pressable>
+            <Animated.View
+              style={[styles.finishOverlay, finishFadeStyle]}
+              pointerEvents={volumeOpen ? 'none' : 'auto'}
+            >
               <Pressable
                 onPress={() => { void handleFinish(); }}
                 onPressIn={() => {
@@ -448,17 +419,22 @@ export default function PlaybackScreen() {
                 <Text style={styles.finishText}>Finish Session</Text>
               </Pressable>
             </Animated.View>
-            <View style={styles.volumeContainer}>
-              <MaterialCommunityIcons name="head-flash" size={20} color="rgba(255,255,255,0.5)" />
+            <Animated.View
+              style={[styles.volumeSliderReveal, volumeRevealStyle]}
+              pointerEvents={volumeOpen ? 'auto' : 'none'}
+              onLayout={(e) => {
+                const w = e.nativeEvent.layout.width;
+                sliderWidthSV.value = w;
+                setVolumeTrackWidth((prev) => (prev === w ? prev : w));
+              }}
+            >
               <GestureDetector gesture={gesture}>
-                <View style={styles.sliderContainer} onLayout={(e) => { sliderWidthSV.value = e.nativeEvent.layout.width; }}>
+                <View style={[styles.sliderContainer, { width: volumeTrackWidth }]}>
                   <View style={styles.pillTrack}>
                     <Animated.View style={[styles.pillFill, sliderStyle]} />
-                    {/* White label — visible over dark empty area */}
                     <View style={styles.labelLayer} pointerEvents="none">
                       <Text style={styles.pillLabelWhite}>{volumeLabel}</Text>
                     </View>
-                    {/* Black label clipped to fill width — visible over white fill */}
                     <Animated.View style={[styles.labelClipOuter, labelClipStyle]} pointerEvents="none">
                       <Animated.View style={[styles.labelClipInner, labelFullStyle]}>
                         <Text style={styles.pillLabelBlack}>{volumeLabel}</Text>
@@ -467,7 +443,7 @@ export default function PlaybackScreen() {
                   </View>
                 </View>
               </GestureDetector>
-            </View>
+            </Animated.View>
           </View>
         </SafeAreaView>
       </View>
@@ -479,6 +455,11 @@ export default function PlaybackScreen() {
         onToggle={(id) => { void toggleAmbientSound(id); }}
         ambientVolumes={ambientVolumes}
         onAmbientVolumeChange={updateAmbientVolume}
+        sessionHzLabel={sessionHzLabel}
+        sessionBackgroundLabel={sessionBackgroundLabel}
+        sessionSoundMuted={sessionSoundMuted}
+        sessionSoundColor={sessionSoundMuted ? Colors.textSecondary : selectedColor}
+        onToggleSessionSound={onToggleSessionSound}
       />
 
       {makeItRainActive && isPlaying && (
@@ -493,96 +474,114 @@ export default function PlaybackScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   safeArea: { flex: 1, paddingHorizontal: 24, justifyContent: 'space-between' },
-  brandTitleWrap: { alignItems: 'center', marginTop: -5, marginBottom: 5 },
+  brandTitleWrap: { alignItems: 'center', justifyContent: 'center', marginTop: -5, marginBottom: 8, minHeight: 36 },
   brandTitle: {
     fontFamily: Fonts.serif,
     fontSize: 32,
     color: Colors.text,
     letterSpacing: 0.5,
   },
-  headerTaperLine: {
-    width: 96,
-    height: 2,
-    marginBottom: 8,
-    borderRadius: 1,
+  ambientBtnWrap: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
   },
-  headerTaperLineLeft: { alignSelf: 'flex-start' },
-  headerTaperLineRight: { alignSelf: 'flex-end' },
-  header: {
-    flexDirection: 'column',
-    marginTop: 6,
-    marginBottom: 10,
-    gap: 4,
-  },
-  headerTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  headerLeftCol: { flex: 1, minWidth: 0, alignItems: 'flex-start' },
-  headerRowEnd: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 4,
-  },
-  headerLabel: { fontFamily: Fonts.mono, fontSize: 12, color: Colors.textSecondary },
-  headerValue: { fontFamily: Fonts.mono, fontSize: 14, color: Colors.text },
-  headerRight: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
-  headerRightInner: { alignItems: 'flex-end', gap: 6 },
-  soundToggle: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  ambientButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
+  contentContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    alignSelf: 'flex-end',
+    paddingTop: isSmallDevice ? 40 : 64,
   },
-  contentContainer: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', paddingBottom: isSmallDevice ? 52 : 72 },
   setLabel: { fontFamily: Fonts.mono, fontSize: 14, color: Colors.textSecondary, marginBottom: 12 },
-  cardGlowWrapper: { marginVertical: 14 },
-  cardContainer: {
-    width: '100%',
-    aspectRatio: 1.25,
-    maxHeight: height * 0.26,
-    maxWidth: 320,
+  cardGlowWrapper: { marginVertical: isSmallDevice ? 8 : 12 },
+  orbContainer: {
+    width: ORB_SIZE,
+    height: ORB_SIZE,
+    aspectRatio: 1,
+    borderRadius: ORB_RADIUS,
     alignSelf: 'center',
+    overflow: 'hidden',
+  },
+  orbCard: {
+    flex: 1,
+    borderRadius: ORB_RADIUS,
+    borderWidth: 0,
+    paddingHorizontal: ORB_SIZE * 0.17,
+    paddingVertical: ORB_SIZE * 0.18,
+    backgroundColor: 'rgba(114, 9, 183, 0.1)',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   affirmationText: {
     fontFamily: Fonts.serif,
-    fontSize: isSmallDevice ? 20 : 24,
+    fontSize: isSmallDevice ? 30 : 34,
     color: Colors.text,
     textAlign: 'center',
-    lineHeight: isSmallDevice ? 27 : 32,
+    lineHeight: isSmallDevice ? 44 : 52,
   },
-  controlsContainer: { alignItems: 'center', marginTop: isSmallDevice ? 18 : 28, gap: 12 },
+  controlsContainer: {
+    alignItems: 'center',
+    marginTop: isSmallDevice ? 36 : 52,
+    gap: 10,
+    zIndex: 2,
+  },
   playButton: {
-    width: isSmallDevice ? 60 : 72,
-    height: isSmallDevice ? 60 : 72,
-    borderRadius: isSmallDevice ? 30 : 36,
-    backgroundColor: Colors.chakra.orange,
+    width: isSmallDevice ? 54 : 64,
+    height: isSmallDevice ? 54 : 64,
+    borderRadius: isSmallDevice ? 27 : 32,
+    borderWidth: 2,
+    borderColor: ORB_PURPLE_SOFT,
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: Colors.chakra.orange,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 6,
-    elevation: 4,
   },
   timerText: { fontFamily: Fonts.mono, fontSize: 14, color: Colors.text, marginTop: 4 },
-  footer: { width: '100%', gap: 30, alignItems: 'center', marginBottom: -20 },
-  finishText: { fontFamily: Fonts.mono, fontSize: 14, color: Colors.textSecondary, fontWeight: '500' },
-  volumeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  footer: {
     width: '100%',
-    gap: 10,
+    height: 44,
+    justifyContent: 'center',
   },
-  sliderContainer: { flex: 1, height: 50 },
+  finishOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  finishText: { fontFamily: Fonts.mono, fontSize: 14, color: ORB_PURPLE_SOFT, fontWeight: '500' },
+  volumeIconHit: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: VOLUME_ICON_SLOT,
+    zIndex: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  iconRing: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: ORB_PURPLE_SOFT,
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  volumeSliderReveal: {
+    position: 'absolute',
+    left: VOLUME_ICON_SLOT + VOLUME_ROW_GAP,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
+  sliderContainer: { height: 44 },
   pillTrack: {
     flex: 1,
-    height: 50,
+    height: 44,
     borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.10)',
     overflow: 'hidden',

@@ -57,6 +57,11 @@ type Props = {
   onToggle: (id: AmbientSoundId) => void;
   ambientVolumes: Partial<Record<AmbientSoundId, number>>;
   onAmbientVolumeChange: (id: AmbientSoundId, v: number) => void;
+  sessionHzLabel: string;
+  sessionBackgroundLabel: string;
+  sessionSoundMuted: boolean;
+  sessionSoundColor: string;
+  onToggleSessionSound: () => void;
 };
 
 const SHEET_H_PAD = 20;
@@ -75,6 +80,11 @@ export default function AmbientModal({
   onToggle,
   ambientVolumes,
   onAmbientVolumeChange,
+  sessionHzLabel,
+  sessionBackgroundLabel,
+  sessionSoundMuted,
+  sessionSoundColor,
+  onToggleSessionSound,
 }: Props) {
   const ph = usePostHog();
   useEffect(() => {
@@ -189,7 +199,20 @@ export default function AmbientModal({
               <GestureDetector gesture={dismissGesture}>
                 <View style={styles.header}>
                   <View style={styles.handle} />
-                  <Text style={styles.title}>Ambient Noise</Text>
+                  <View style={styles.titleRow}>
+                    <Text style={styles.title}>Ambient Noise</Text>
+                    <ScalePressable style={styles.sessionSound} onPress={onToggleSessionSound} scaleTo={0.94}>
+                      <View style={styles.sessionHzRow}>
+                        <Ionicons
+                          name={sessionSoundMuted ? 'volume-mute' : 'volume-high'}
+                          size={14}
+                          color={sessionSoundColor}
+                        />
+                        <Text style={[styles.sessionHz, { color: sessionSoundColor }]}>{sessionHzLabel}</Text>
+                      </View>
+                      <Text style={styles.sessionBg}>{sessionBackgroundLabel}</Text>
+                    </ScalePressable>
+                  </View>
                 </View>
               </GestureDetector>
 
@@ -342,11 +365,37 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 18,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 22,
+  },
   title: {
     fontFamily: Fonts.serif,
     fontSize: 28,
     color: Colors.text,
-    marginBottom: 22,
+    flexShrink: 1,
+  },
+  sessionSound: {
+    alignItems: 'flex-end',
+    gap: 2,
+    flexShrink: 0,
+  },
+  sessionHzRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  sessionHz: {
+    fontFamily: Fonts.mono,
+    fontSize: 10,
+  },
+  sessionBg: {
+    fontFamily: Fonts.mono,
+    fontSize: 12,
+    color: Colors.text,
   },
   sectionLabel: {
     fontFamily: Fonts.mono,

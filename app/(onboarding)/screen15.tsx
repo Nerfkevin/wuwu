@@ -1,29 +1,23 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, View, Dimensions } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Dimensions, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import Animated, {
   cancelAnimation,
   Easing,
-  interpolateColor,
   useSharedValue,
   useAnimatedStyle,
   runOnJS,
   withTiming,
 } from 'react-native-reanimated';
-import AnimatedGlow, { GlowEvent, PresetConfig } from '@/lib/animated-glow';
+import AnimatedGlow, { PresetConfig } from '@/lib/animated-glow';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
-import AffirmationCard from '../add/components/affirmation-card';
-import { getPillarColor } from '@/constants/affirmations';
-import { Colors, Fonts } from '@/constants/theme';
-import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AudioBuffer, AudioContext } from '@/lib/audio-api-core';
 import { getSavedRecordings, SavedRecording } from '@/lib/recording-store';
 import { configureBackgroundPlaybackAsync } from '@/lib/audio-playback';
-import { ScalePressable } from '@/components/ScalePressable';
+import { Colors, Fonts } from '@/constants/theme';
 import {
   height,
   BOWL_VOLUME,
@@ -33,20 +27,13 @@ import {
   AMBIENT_VOLUME,
   BINAURAL_BEATS,
   BOWL_AUDIO_BY_FREQUENCY,
-  BRAINWAVE_LABELS,
   NATURE_SOUNDS,
   AmbientNode,
   AmbientSoundId,
-  withAlpha,
   affirmationPercentToGain,
 } from '../session/playback-constants';
 import { usePostHogScreenViewed } from "@/lib/posthog";
 import MakeItRain from '@/app/session/make-it-rain';
-
-const { width: screenWidth } = Dimensions.get('window');
-const isSmallDevice = screenWidth < 380;
-
-const triggerHaptic = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
 const INTRO_MS = 5000;
 const GAP_MS = 5000;
@@ -54,17 +41,58 @@ const MAX_TRACKS = 3;
 const AMBIENT_ONBOARDING_VOLUME = 0.15;
 const ONBOARDING_AMBIENTS: AmbientSoundId[] = ['rain', 'birds'];
 
-/** Solfeggio Hz → accent: light pink/lavender (low) → deep indigo (high) */
-const FREQ_COLORS: Record<string, string> = {
-  '174': '#F5D0FE',
-  '285': '#F0ABFC',
-  '396': '#E879F9',
-  '417': '#D946EF',
-  '528': '#C084FC',
-  '639': '#A855F7',
-  '741': '#818CF8',
-  '852': '#6366F1',
-  '963': '#4338CA',
+const { width: screenWidth } = Dimensions.get('window');
+const isSmallDevice = screenWidth < 380;
+const isShortDevice = height < 720;
+
+const ORB_PURPLE_DEEP = '#6B21CC';
+const ORB_PURPLE = '#7C3AED';
+const ORB_PURPLE_MID = '#A855F7';
+const ORB_PURPLE_SOFT = '#C084FC';
+const ORB_PURPLE_LIGHT = '#E9D5FF';
+
+const ORB_SIZE = Math.round(
+  Math.min(
+    screenWidth - (isSmallDevice ? 48 : 64),
+    height * (isShortDevice ? 0.42 : 0.34),
+    isShortDevice ? 304 : 320
+  )
+);
+const ORB_RADIUS = ORB_SIZE / 2;
+
+const orbGlowPreset: PresetConfig = {
+  metadata: { name: 'Orb Ring', textColor: '#FFFFFF', category: 'Custom', tags: [] },
+  states: [
+    {
+      name: 'default',
+      preset: {
+        cornerRadius: ORB_RADIUS,
+        outlineWidth: 1.5,
+        borderColor: [ORB_PURPLE_SOFT, ORB_PURPLE_DEEP, ORB_PURPLE_MID, ORB_PURPLE_LIGHT, ORB_PURPLE_SOFT],
+        backgroundColor: 'transparent',
+        animationSpeed: 1.2,
+        borderSpeedMultiplier: 1,
+        glowLayers: [
+          {
+            glowPlacement: 'behind',
+            colors: [ORB_PURPLE_SOFT, ORB_PURPLE, ORB_PURPLE_DEEP, ORB_PURPLE_MID],
+            glowSize: isSmallDevice ? 10 : 14,
+            opacity: 0.52,
+            speedMultiplier: 1,
+            coverage: 1,
+          },
+          {
+            glowPlacement: 'behind',
+            colors: [ORB_PURPLE_LIGHT, ORB_PURPLE_MID, ORB_PURPLE_DEEP, ORB_PURPLE_SOFT],
+            glowSize: 4,
+            opacity: 0.8,
+            speedMultiplier: 0.8,
+            coverage: 1,
+          },
+        ],
+      },
+    },
+  ],
 };
 
 type SessionSettings = { freq: string; bg: string; brainwave: string };
@@ -78,25 +106,12 @@ export default function Screen15() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  // ─── UI state ─────────────────────────────────────────────────────────────
   const [settings, setSettings] = useState<SessionSettings>({
     freq: '528', bg: 'Brainwaves', brainwave: 'alpha',
   });
   const [recordings, setRecordings] = useState<SavedRecording[]>([]);
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
-  const [glowState, setGlowState] = useState<GlowEvent>('default');
-  const [isMuted, setIsMuted] = useState(false);
 
-  // ─── "Affirming..." dots ──────────────────────────────────────────────────
-  const [dotCount, setDotCount] = useState(1);
-  useEffect(() => {
-    const id = setInterval(() => {
-      setDotCount((prev) => (prev % 3) + 1);
-    }, 500);
-    return () => clearInterval(id);
-  }, []);
-
-  // ─── Audio refs ───────────────────────────────────────────────────────────
   const audioCtxRef = useRef<AudioContext | null>(null);
   const bowlGainRef = useRef<ReturnType<AudioContext['createGain']> | null>(null);
   const affirmationGainRef = useRef<ReturnType<AudioContext['createGain']> | null>(null);
@@ -113,64 +128,29 @@ export default function Screen15() {
   );
   const ambientNodesRef = useRef<Map<AmbientSoundId, AmbientNode>>(new Map());
 
-  // ─── Session timer refs ───────────────────────────────────────────────────
   const sessionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionStartedAtRef = useRef<number | null>(null);
   const sessionElapsedMsRef = useRef(0);
 
-  // ─── Control refs ─────────────────────────────────────────────────────────
   const mountedRef = useRef(true);
   const isPlayingRef = useRef(false);
 
-  // ─── Animation state ──────────────────────────────────────────────────────
   const messageOpacity = useSharedValue(0);
   const messageTranslateY = useSharedValue(0);
-  const cardColorProgress = useSharedValue(1);
-
   const [displayMessage, setDisplayMessage] = useState('');
-  const [cardGlowState, setCardGlowState] = useState<GlowEvent>('default');
-  const [resolvedCardColor, setResolvedCardColor] = useState<string>('#A855F7');
-  const [cardColorRange, setCardColorRange] = useState({
-    from: '#A855F7',
-    to: '#A855F7',
-  });
+  const [dotCount, setDotCount] = useState(1);
 
-  // ─── Derived values ───────────────────────────────────────────────────────
-  const selectedColor = FREQ_COLORS[settings.freq] ?? '#A855F7';
-  const shouldPlayBrainwave = settings.bg === 'Brainwaves';
-  const shouldPlayPure = settings.bg === 'Pure';
+  useEffect(() => {
+    const id = setInterval(() => {
+      setDotCount((prev) => (prev % 3) + 1);
+    }, 500);
+    return () => clearInterval(id);
+  }, []);
 
   const currentRecording = recordings[currentTrackIndex];
   const message = currentRecording?.text ?? '';
-  const messagePillarColor = getPillarColor(currentRecording?.pillar, selectedColor);
-
   const hasAbundance = recordings.some((r) => r.pillar === 'Abundance');
 
-  const totalMessages = recordings.length;
-  const progressLabel =
-    totalMessages > 0
-      ? `${Math.min(currentTrackIndex + 1, totalMessages)}/${totalMessages}`
-      : '0/0';
-  const freqIconColor = !isMuted ? selectedColor : Colors.textSecondary;
-  const freqIconName = !isMuted ? 'volume-high' : 'volume-mute';
-
-  // ─── Card border transition colors ───────────────────────────────────────
-  const cardBorderTransitionColors = useMemo(
-    () => [
-      withAlpha(cardColorRange.from, 0.82),
-      withAlpha(cardColorRange.to, 0.4),
-      withAlpha(cardColorRange.to, 0.82),
-    ],
-    [cardColorRange.from, cardColorRange.to]
-  );
-
-  const finalizeCardColorTransition = useCallback((nextColor: string) => {
-    setResolvedCardColor(nextColor);
-    setCardColorRange({ from: nextColor, to: nextColor });
-    setCardGlowState('default');
-  }, []);
-
-  // ─── Message transition ───────────────────────────────────────────────────
   useEffect(() => {
     if (displayMessage === message) return;
     cancelAnimation(messageOpacity);
@@ -195,30 +175,6 @@ export default function Screen15() {
     );
   }, [displayMessage, message, messageOpacity, messageTranslateY]);
 
-  // ─── Card color transition ────────────────────────────────────────────────
-  useEffect(() => {
-    if (resolvedCardColor === messagePillarColor) return;
-    cancelAnimation(cardColorProgress);
-    setCardGlowState('default');
-    setCardColorRange({ from: resolvedCardColor, to: messagePillarColor });
-    cardColorProgress.value = 0;
-    requestAnimationFrame(() => setCardGlowState('hover'));
-    cardColorProgress.value = withTiming(
-      1,
-      { duration: 1100, easing: Easing.inOut(Easing.cubic) },
-      (finished) => {
-        if (!finished) return;
-        runOnJS(finalizeCardColorTransition)(messagePillarColor);
-      }
-    );
-  }, [
-    cardColorProgress,
-    finalizeCardColorTransition,
-    messagePillarColor,
-    resolvedCardColor,
-  ]);
-
-  // ─── Session timer ────────────────────────────────────────────────────────
   const startSessionTimer = useCallback(() => {
     if (sessionStartedAtRef.current) return;
     sessionStartedAtRef.current = Date.now();
@@ -238,7 +194,6 @@ export default function Screen15() {
     }
   }, []);
 
-  // ─── Audio teardown ───────────────────────────────────────────────────────
   const stopAllAudio = useCallback(() => {
     if (affirmationSourceRef.current) {
       const src = affirmationSourceRef.current;
@@ -276,82 +231,11 @@ export default function Screen15() {
     }
   }, []);
 
-  // ─── Mute toggle ─────────────────────────────────────────────────────────
-  const toggleMute = useCallback(() => {
-    triggerHaptic();
-    setIsMuted((prev) => {
-      const next = !prev;
-      const gainVal = next ? 0 : OSC_VOLUME;
-      if (binauralGainRef.current) binauralGainRef.current.gain.value = gainVal;
-      if (bowlGainRef.current) {
-        bowlGainRef.current.gain.value = next ? 0 : BOWL_VOLUME;
-      }
-      const ambientGain = next ? 0 : AMBIENT_VOLUME * AMBIENT_ONBOARDING_VOLUME;
-      for (const { gain } of ambientNodesRef.current.values()) {
-        gain.gain.value = ambientGain;
-      }
-      return next;
-    });
-  }, []);
-
-  // ─── Animated styles ──────────────────────────────────────────────────────
   const messageAnimatedStyle = useAnimatedStyle(() => ({
     opacity: messageOpacity.value,
     transform: [{ translateY: messageTranslateY.value }],
   }));
-  const cardAnimatedStyle = useAnimatedStyle(
-    () => ({
-      borderColor: interpolateColor(
-        cardColorProgress.value,
-        [0, 0.5, 1],
-        cardBorderTransitionColors
-      ),
-    }),
-    [cardBorderTransitionColors]
-  );
 
-  const cardGlowPreset = useMemo<PresetConfig>(
-    () => ({
-      metadata: {
-        name: 'Affirmation Card Transition',
-        textColor: '#FFFFFF',
-        category: 'Custom',
-        tags: [],
-      },
-      states: [
-        {
-          name: 'default',
-          preset: {
-            cornerRadius: 28,
-            outlineWidth: 0,
-            glowLayers: [
-              {
-                colors: [cardColorRange.from, cardColorRange.from],
-                opacity: 0.6,
-                glowSize: 10,
-              },
-            ],
-          },
-        },
-        {
-          name: 'hover',
-          transition: 1100,
-          preset: {
-            glowLayers: [
-              {
-                colors: [cardColorRange.to, cardColorRange.to],
-                opacity: 0.66,
-                glowSize: 12,
-              },
-            ],
-          },
-        },
-      ],
-    }),
-    [cardColorRange.from, cardColorRange.to]
-  );
-
-  // ─── Main session sequence ────────────────────────────────────────────────
   useEffect(() => {
     const run = async () => {
       const [f, b, bw] = await Promise.all([
@@ -371,7 +255,6 @@ export default function Screen15() {
       const source = allRecs[0];
       const recs = source ? Array.from({ length: MAX_TRACKS }, () => source) : [];
       setRecordings(recs);
-      // Don't set displayMessage directly — let the transition effect animate it in
 
       if (recs.length === 0) {
         router.replace('/(tabs)' as any);
@@ -480,16 +363,13 @@ export default function Screen15() {
       isPlayingRef.current = true;
       startSessionTimer();
 
-      // 5 s intro (freq only)
       await new Promise<void>((r) => setTimeout(r, INTRO_MS));
       if (!mountedRef.current) return;
 
-      // Play each affirmation with a 5 s gap after each
       for (let i = 0; i < recs.length; i++) {
         if (!mountedRef.current) return;
         setCurrentTrackIndex(i);
 
-        // Stop any leftover source
         if (affirmationSourceRef.current) {
           const old = affirmationSourceRef.current;
           old.onEnded = null;
@@ -498,7 +378,6 @@ export default function Screen15() {
           affirmationSourceRef.current = null;
         }
 
-        // Decode outside the Promise constructor so errors propagate properly
         let buffer = affirmationBuffersRef.current.get(recs[i].id);
         if (!buffer) {
           try {
@@ -511,11 +390,9 @@ export default function Screen15() {
         }
         if (!mountedRef.current) return;
 
-        // Resume in case the context auto-suspended
         await ctx.resume();
         if (!mountedRef.current) return;
 
-        // Play and wait for onEnded
         await new Promise<void>((resolve) => {
           const src = ctx.createBufferSource();
           src.buffer = buffer!;
@@ -537,7 +414,6 @@ export default function Screen15() {
         if (!mountedRef.current) return;
       }
 
-      // Fade all gain nodes to 0 over 1 s before stopping
       const FADE_S = 1;
       const now = ctx.currentTime;
       const fadeGains = [
@@ -574,7 +450,6 @@ export default function Screen15() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={styles.container}>
@@ -584,89 +459,38 @@ export default function Screen15() {
           </View>
         )}
         <SafeAreaView
-          style={[
-            styles.safeArea,
-            { paddingTop: insets.top + 6, paddingBottom: insets.bottom + 24 },
-          ]}
+          style={[styles.safeArea, { paddingTop: insets.top + 6, paddingBottom: insets.bottom + 10 }]}
           edges={[]}
         >
           <View style={styles.brandTitleWrap}>
             <Text style={styles.brandTitle}>Wu-Wu</Text>
           </View>
 
-          <View style={styles.header}>
-            <View style={styles.headerLeftCol}>
-              <LinearGradient
-                colors={[
-                  'rgba(192, 132, 252, 0)',
-                  'rgba(192, 132, 252, 0.28)',
-                  'rgba(167, 139, 250, 0.72)',
-                  'rgba(192, 132, 252, 0.28)',
-                  'rgba(192, 132, 252, 0)',
-                ]}
-                locations={[0, 0.22, 0.5, 0.78, 1]}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={[styles.headerTaperLine, styles.headerTaperLineLeft]}
-              />
-              <Text style={styles.headerLabel}>Affirmation</Text>
-              <Text style={styles.headerValue}>{progressLabel}</Text>
-            </View>
-            <View style={styles.headerRight}>
-              <View style={styles.headerRightInner}>
-                <LinearGradient
-                  colors={[
-                    'rgba(129, 140, 248, 0)',
-                    'rgba(129, 140, 248, 0.28)',
-                    'rgba(99, 102, 241, 0.7)',
-                    'rgba(129, 140, 248, 0.28)',
-                    'rgba(129, 140, 248, 0)',
-                  ]}
-                  locations={[0, 0.22, 0.5, 0.78, 1]}
-                  start={{ x: 0, y: 0.5 }}
-                  end={{ x: 1, y: 0.5 }}
-                  style={[styles.headerTaperLine, styles.headerTaperLineRight]}
-                />
-                <ScalePressable style={styles.soundToggle} onPress={toggleMute} scaleTo={0.94}>
-                  <Ionicons name={freqIconName} size={16} color={freqIconColor} />
-                  <Text style={[styles.headerLabel, { color: freqIconColor }]}>
-                    {settings.freq} Hz
-                  </Text>
-                </ScalePressable>
-                {shouldPlayBrainwave ? (
-                  <Text style={styles.headerValue}>
-                    {BRAINWAVE_LABELS[settings.brainwave] ?? settings.brainwave}
-                  </Text>
-                ) : shouldPlayPure ? (
-                  <Text style={styles.headerValue}>Pure</Text>
-                ) : (
-                  <Text style={styles.headerValue}>Singing Bowl</Text>
-                )}
-              </View>
-            </View>
-          </View>
-
-          {/* Main content — centered, shifted up */}
           <View style={styles.contentContainer}>
-            <View style={styles.cardGlowWrapper}>
-              <AnimatedGlow preset={cardGlowPreset} activeState={cardGlowState}>
-                <AffirmationCard
-                  useGlow={false}
-                  borderColor={resolvedCardColor}
-                  wrapperStyle={styles.cardContainer}
-                  cardStyle={cardAnimatedStyle}
-                >
-                  <Animated.Text
-                    style={[styles.affirmationText, messageAnimatedStyle]}
-                  >
-                    {`"${displayMessage}"`}
-                  </Animated.Text>
-                </AffirmationCard>
+            <View style={styles.cardGlowWrapper} pointerEvents="box-none">
+              <AnimatedGlow preset={orbGlowPreset} activeState="default">
+                <View style={styles.orbContainer}>
+                  <View style={styles.orbCard}>
+                    <LinearGradient
+                      colors={['rgba(192, 132, 252, 0.2)', 'rgba(88, 28, 135, 0.12)', 'rgba(10, 0, 13, 0.18)']}
+                      locations={[0, 0.55, 1]}
+                      style={StyleSheet.absoluteFillObject}
+                      pointerEvents="none"
+                    />
+                    <Animated.Text
+                      style={[styles.affirmationText, messageAnimatedStyle]}
+                      numberOfLines={5}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.55}
+                    >
+                      {displayMessage}
+                    </Animated.Text>
+                  </View>
+                </View>
               </AnimatedGlow>
             </View>
           </View>
 
-          {/* Bottom label */}
           <View style={styles.footer}>
             <View style={styles.affirmingRow}>
               <Text style={styles.affirmingLabel}>YOU ARE MANIFESTING</Text>
@@ -683,65 +507,45 @@ export default function Screen15() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
-  safeArea: { flex: 1, paddingHorizontal: isSmallDevice ? 18 : 24 },
-  brandTitleWrap: { alignItems: 'center', marginTop: 2, marginBottom: 2 },
+  safeArea: { flex: 1, paddingHorizontal: 24, justifyContent: 'space-between' },
+  brandTitleWrap: { alignItems: 'center', justifyContent: 'center', marginTop: -5, marginBottom: 8, minHeight: 36 },
   brandTitle: {
     fontFamily: Fonts.serif,
-    fontSize: isSmallDevice ? 22 : 26,
+    fontSize: 32,
     color: Colors.text,
     letterSpacing: 0.5,
-  },
-  headerTaperLine: {
-    width: 96,
-    height: 2,
-    marginBottom: 8,
-    borderRadius: 1,
-  },
-  headerTaperLineLeft: { alignSelf: 'flex-start' },
-  headerTaperLineRight: { alignSelf: 'flex-end' },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginTop: 6,
-    marginBottom: 10,
-  },
-  headerLeftCol: { flex: 1, minWidth: 0, alignItems: 'flex-start' },
-  headerLabel: {
-    fontFamily: Fonts.mono,
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginBottom: 4,
-  },
-  headerValue: { fontFamily: Fonts.mono, fontSize: 14, color: Colors.text },
-  headerRight: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
-  headerRightInner: { alignItems: 'flex-end', gap: 6 },
-  soundToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 2,
   },
   contentContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingBottom: 80,
   },
-  cardGlowWrapper: { marginVertical: 14 },
-  cardContainer: {
-    width: '100%',
-    aspectRatio: 1.25,
-    maxHeight: height * 0.26,
-    maxWidth: 320,
+  cardGlowWrapper: { marginVertical: isSmallDevice ? 8 : 12 },
+  orbContainer: {
+    width: ORB_SIZE,
+    height: ORB_SIZE,
+    aspectRatio: 1,
+    borderRadius: ORB_RADIUS,
     alignSelf: 'center',
+    overflow: 'hidden',
+  },
+  orbCard: {
+    flex: 1,
+    borderRadius: ORB_RADIUS,
+    borderWidth: 0,
+    paddingHorizontal: ORB_SIZE * 0.17,
+    paddingVertical: ORB_SIZE * 0.18,
+    backgroundColor: 'rgba(114, 9, 183, 0.1)',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   affirmationText: {
     fontFamily: Fonts.serif,
-    fontSize: isSmallDevice ? 20 : 24,
+    fontSize: isSmallDevice ? 30 : 34,
     color: Colors.text,
     textAlign: 'center',
-    lineHeight: isSmallDevice ? 27 : 32,
+    lineHeight: isSmallDevice ? 44 : 52,
   },
   footer: {
     alignItems: 'center',
