@@ -26,7 +26,7 @@ const isSmallDevice = width < 380;
 
 const QUESTION = "what should we call you?";
 
-const TYPEWRITER_MS = 33;
+const TYPEWRITER_MS = 8;
 const LETTER_FADE_MS = 480;
 
 type CharToken = { ch: string };

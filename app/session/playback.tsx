@@ -44,9 +44,9 @@ const ORB_PURPLE_LIGHT = '#E9D5FF';
 
 const ORB_SIZE = Math.round(
   Math.min(
-    screenWidth - (isSmallDevice ? 48 : 64),
-    height * (isShortDevice ? 0.42 : 0.34),
-    isShortDevice ? 304 : 320
+    screenWidth - (isSmallDevice ? 48 : 56),
+    height * (isShortDevice ? 0.42 : 0.40),
+    isShortDevice ? 304 : 380
   )
 );
 const ORB_RADIUS = ORB_SIZE / 2;
@@ -348,14 +348,17 @@ export default function PlaybackScreen() {
                       style={StyleSheet.absoluteFillObject}
                       pointerEvents="none"
                     />
-                    <Animated.Text
-                      style={[styles.affirmationText, messageAnimatedStyle]}
-                      numberOfLines={5}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.55}
-                    >
-                      {displayMessage}
-                    </Animated.Text>
+                    <Animated.View style={[styles.affirmationSlot, messageAnimatedStyle]}>
+                      <Text
+                        key={displayMessage}
+                        style={styles.affirmationText}
+                        numberOfLines={5}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.55}
+                      >
+                        {displayMessage}
+                      </Text>
+                    </Animated.View>
                   </View>
                 </View>
               </AnimatedGlow>
@@ -508,19 +511,23 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: ORB_RADIUS,
     borderWidth: 0,
-    paddingHorizontal: ORB_SIZE * 0.17,
-    paddingVertical: ORB_SIZE * 0.18,
     backgroundColor: 'rgba(114, 9, 183, 0.1)',
     overflow: 'hidden',
-    alignItems: 'center',
+  },
+  affirmationSlot: {
+    ...StyleSheet.absoluteFillObject,
+    paddingHorizontal: ORB_SIZE * 0.17,
+    paddingVertical: ORB_SIZE * 0.18,
     justifyContent: 'center',
   },
   affirmationText: {
+    width: '100%',
+    maxHeight: '100%',
     fontFamily: Fonts.serif,
     fontSize: isSmallDevice ? 30 : 34,
     color: Colors.text,
     textAlign: 'center',
-    lineHeight: isSmallDevice ? 44 : 52,
+    includeFontPadding: false,
   },
   controlsContainer: {
     alignItems: 'center',

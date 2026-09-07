@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
-  TouchableWithoutFeedback,
   Image,
   Linking,
 } from "react-native";
@@ -15,6 +14,7 @@ import * as Haptics from "expo-haptics";
 import { Fonts } from "@/constants/theme";
 import { useOnboardingNav } from "./use-onboarding-nav";
 import { usePostHogScreenViewed } from "@/lib/posthog";
+import { ScalePressable } from "@/components/ScalePressable";
 
 const { width, height } = Dimensions.get("window");
 const isSmallDevice = width < 380;
@@ -22,7 +22,7 @@ const isShortDevice = height < 700;
 
 const HEY = "hey";
 
-const TYPEWRITER_MS = 53;
+const TYPEWRITER_MS = 33;
 const LETTER_FADE_MS = 480;
 
 type CharToken = { ch: string };
@@ -127,6 +127,7 @@ export default function Screen1() {
   }, [heyTypeDone]);
 
   const handleContinue = () => {
+    if (!heyTypeDone) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     navigateTo("/(onboarding)/screen2");
   };
@@ -142,71 +143,78 @@ export default function Screen1() {
   const stackHeight = orbSize + orbMarginBottom + heyLineHeight;
 
   return (
-    <TouchableWithoutFeedback onPress={handleContinue}>
-      <Animated.View style={[styles.container, { opacity: contentOpacity }]}>
-        <SafeAreaView style={styles.safeArea}>
-          <View style={styles.content}>
-            <View style={[styles.stackBlock, { height: stackHeight }]}>
-              <Animated.View
-                style={{
-                  width: orbSize,
-                  height: orbSize,
-                  marginBottom: orbMarginBottom,
-                  opacity: fadeOrb,
-                }}
-              >
-                <Image
-                  source={require("@/assets/images/orb.png")}
-                  style={styles.orb}
-                  resizeMode="contain"
-                />
-              </Animated.View>
+    <Animated.View style={[styles.container, { opacity: contentOpacity }]}>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.content}>
+          <View style={[styles.stackBlock, { height: stackHeight }]}>
+            <Animated.View
+              style={{
+                width: orbSize,
+                height: orbSize,
+                marginBottom: orbMarginBottom,
+                opacity: fadeOrb,
+              }}
+            >
+              <Image
+                source={require("@/assets/images/orb.png")}
+                style={styles.orb}
+                resizeMode="contain"
+              />
+            </Animated.View>
 
-              <View
-                style={[
-                  styles.charRow,
-                  { height: heyLineHeight },
-                ]}
-              >
-                {heyWords.map((word, wIdx) => {
-                  const charsVisible = Math.max(
-                    0,
-                    Math.min(word.chars.length, visibleHeyCount - word.startIdx)
-                  );
-                  if (charsVisible === 0) return null;
-                  return (
-                    <View key={wIdx} style={styles.wordRow}>
-                      {word.chars.slice(0, charsVisible).map((t, cIdx) => (
-                        <FadeLetter
-                          key={`${word.startIdx}-${cIdx}`}
-                          ch={t.ch}
-                          charStyle={styles.heyCharText}
-                        />
-                      ))}
-                    </View>
-                  );
-                })}
-              </View>
+            <View
+              style={[
+                styles.charRow,
+                { height: heyLineHeight },
+              ]}
+            >
+              {heyWords.map((word, wIdx) => {
+                const charsVisible = Math.max(
+                  0,
+                  Math.min(word.chars.length, visibleHeyCount - word.startIdx)
+                );
+                if (charsVisible === 0) return null;
+                return (
+                  <View key={wIdx} style={styles.wordRow}>
+                    {word.chars.slice(0, charsVisible).map((t, cIdx) => (
+                      <FadeLetter
+                        key={`${word.startIdx}-${cIdx}`}
+                        ch={t.ch}
+                        charStyle={styles.heyCharText}
+                      />
+                    ))}
+                  </View>
+                );
+              })}
             </View>
           </View>
+        </View>
 
-          <Animated.View style={[styles.footer, { opacity: fadeTap }]}>
-            <Text style={styles.tapText}>tap to continue →</Text>
-          </Animated.View>
+        <Animated.View
+          style={[styles.footer, { opacity: fadeTap }]}
+          pointerEvents={heyTypeDone ? "auto" : "none"}
+        >
+          <ScalePressable
+            onPress={handleContinue}
+            disabled={!heyTypeDone}
+            scaleTo={0.96}
+          >
+            <View style={styles.continueButton}>
+              <Text style={styles.continueText}>continue →</Text>
+            </View>
+          </ScalePressable>
+        </Animated.View>
 
-          <View style={{ height: isSmallDevice ? 24 : 32 }} />
-
-          <View style={styles.disclaimerContainer}>
-            <Text style={styles.disclaimerText}>
-              By continuing, you agree to our{' '}
-              <Text style={styles.linkText} onPress={() => handleOpenLink('https://98goats.com/terms')}>Terms & Conditions</Text>
-              {' '}and{' '}
-              <Text style={styles.linkText} onPress={() => handleOpenLink('https://98goats.com/privacy')}>Privacy Policy</Text>.
-            </Text>
-          </View>
-        </SafeAreaView>
-      </Animated.View>
-    </TouchableWithoutFeedback>
+        <View style={styles.disclaimerContainer}>
+          <Text style={styles.disclaimerText}>
+            By continuing, you agree to our{' '}
+            <Text style={styles.linkText} onPress={() => handleOpenLink('https://98goats.com/terms')}>Terms & Conditions</Text>
+            {' '}and{' '}
+            <Text style={styles.linkText} onPress={() => handleOpenLink('https://98goats.com/privacy')}>Privacy Policy</Text>.
+          </Text>
+        </View>
+      </SafeAreaView>
+    </Animated.View>
   );
 }
 
@@ -250,16 +258,25 @@ const styles = StyleSheet.create({
   footer: {
     paddingHorizontal: isSmallDevice ? 24 : 32,
     paddingBottom: isSmallDevice ? 10 : 10,
-    alignItems: "flex-end",
+    paddingTop: 12,
   },
-  tapText: {
-    fontSize: isSmallDevice ? 13 : 15,
-    color: "rgba(255,255,255,0.55)",
+  continueButton: {
+    borderRadius: 20,
+    paddingVertical: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
+  continueText: {
+    fontSize: isSmallDevice ? 15 : 17,
     fontFamily: Fonts.mono,
+    letterSpacing: 0.3,
+    color: "#000",
   },
   disclaimerContainer: {
     alignItems: "center",
     paddingHorizontal: 40,
+    paddingBottom: isSmallDevice ? 8 : 12,
   },
   disclaimerText: {
     fontSize: 10,

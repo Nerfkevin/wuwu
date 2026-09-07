@@ -25,8 +25,6 @@ export default function OnboardingLayout() {
         <Stack.Screen name="screen3" />
         <Stack.Screen name="screen4" />
         <Stack.Screen name="screen5" />
-        <Stack.Screen name="screen6" />
-        <Stack.Screen name="screen7" />
         <Stack.Screen name="screen8" />
         <Stack.Screen name="screen9" />
         <Stack.Screen name="screen11" />

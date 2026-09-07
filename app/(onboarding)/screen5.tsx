@@ -125,6 +125,32 @@ const slides: Slide[] = [
       "Almost constant",
     ],
   },
+  {
+    id: "5",
+    type: "single",
+    question: "and how would you describe your relationship with yourself right now?",
+    storageKey: "onboarding_self_relationship",
+    options: [
+      "🎭 it has its ups and downs",
+      "😔 feeling distant/disconnected",
+      "🌱 just starting/rebuilding",
+      "✨ close and compassionate",
+    ],
+  },
+  {
+    id: "6",
+    type: "single",
+    question: "what's holding you back from the more abundant version of yourself?",
+    storageKey: "onboarding_blocks",
+    options: [
+      "😅 I lose momentum or forget",
+      "🤔 I don't know where to start",
+      "🔍 I haven't found what works yet",
+      "😵 I get overwhelmed and stop",
+      "🌞 I'm just not motivated",
+      "⏳ I don't see instant results",
+    ],
+  },
 ];
 
 // ─── question text slide (scrolls in FlatList) ───────────────────────────────
@@ -285,11 +311,11 @@ function SingleOptions({
         return (
           <ScalePressable
             key={opt}
-            style={[styles.option, isSel && styles.optionSelected]}
+            style={[styles.option, styles.optionRow, isSel && styles.optionSelected]}
             pressedStyle={styles.optionPressed}
             onPress={() => onSelect(opt)}
           >
-            <Text style={[styles.optionText, isSel && styles.optionTextSelected]}>
+            <Text style={[styles.optionText, styles.optionTextWrap, isSel && styles.optionTextSelected]}>
               {opt}
             </Text>
           </ScalePressable>
@@ -444,6 +470,8 @@ export default function Screen5() {
   const [pillarsSelected, setPillarsSelected] = useState<string[]>([]);
   const [frequencyIdx, setFrequencyIdx] = useState(0);
   const [durationSelected, setDurationSelected] = useState<string | null>(null);
+  const [selfRelationshipSelected, setSelfRelationshipSelected] = useState<string | null>(null);
+  const [blocksSelected, setBlocksSelected] = useState<string | null>(null);
   const listRef = useRef<FlatList>(null);
 
   const freqLabel = (slides[2] as SnapSlide).options[frequencyIdx];
@@ -491,6 +519,10 @@ export default function Screen5() {
       ? titleDone
       : activeIndex === 3
       ? durationSelected !== null
+      : activeIndex === 4
+      ? selfRelationshipSelected !== null
+      : activeIndex === 5
+      ? blocksSelected !== null
       : true;
 
   useEffect(() => {
@@ -541,9 +573,17 @@ export default function Screen5() {
       await AsyncStorage.setItem("onboarding_frequency", freqLabel);
       listRef.current?.scrollToIndex({ index: 3, animated: true });
       setActiveIndex(3);
-    } else {
+    } else if (activeIndex === 3) {
       await AsyncStorage.setItem("onboarding_duration", durationSelected!);
-      navigateTo("/(onboarding)/screen6");
+      listRef.current?.scrollToIndex({ index: 4, animated: true });
+      setActiveIndex(4);
+    } else if (activeIndex === 4) {
+      await AsyncStorage.setItem("onboarding_self_relationship", selfRelationshipSelected!);
+      listRef.current?.scrollToIndex({ index: 5, animated: true });
+      setActiveIndex(5);
+    } else {
+      await AsyncStorage.setItem("onboarding_blocks", blocksSelected!);
+      navigateTo("/(onboarding)/screen8");
     }
   };
 
@@ -616,6 +656,26 @@ export default function Screen5() {
             onSelect={(v) => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               setDurationSelected(v);
+            }}
+          />
+          <SingleOptions
+            slide={slides[4] as SingleSlide}
+            isSlideCurrent={activeIndex === 4}
+            revealContent={titleDone}
+            selected={selfRelationshipSelected}
+            onSelect={(v) => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setSelfRelationshipSelected(v);
+            }}
+          />
+          <SingleOptions
+            slide={slides[5] as SingleSlide}
+            isSlideCurrent={activeIndex === 5}
+            revealContent={titleDone}
+            selected={blocksSelected}
+            onSelect={(v) => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setBlocksSelected(v);
             }}
           />
         </View>
@@ -716,7 +776,7 @@ const styles = StyleSheet.create({
   optionsPanel: {
     gap: isSmallDevice ? 7 : 10,
     position: "absolute",
-    top: isSmallDevice ? 24 : 50,
+    top: isSmallDevice ? 8 : 24,
     left: isSmallDevice ? 28 : 32,
     right: isSmallDevice ? 28 : 32,
   },
@@ -747,6 +807,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   optionTextSelected: { color: "#fff" },
+  optionTextWrap: { flexShrink: 1, textAlign: "center" },
   emoji: { fontSize: 14 },
 
   footer: {

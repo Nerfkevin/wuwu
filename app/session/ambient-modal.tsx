@@ -220,6 +220,26 @@ export default function AmbientModal({
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ paddingBottom: isSmallDevice ? 180 : 110 }}
               >
+                <Text style={styles.sectionLabel}>Visual</Text>
+                <View style={styles.grid}>
+                  <ScalePressable
+                    scaleTo={0.92}
+                    style={[styles.tile, activeAmbientSounds.has('money') && styles.tileRainActive]}
+                    onPress={() => handleTilePress('money')}
+                  >
+                    <View style={styles.ambientTileInner}>
+                      <Ionicons
+                        name="cash-outline"
+                        size={28}
+                        color={activeAmbientSounds.has('money') ? '#4CAF50' : Colors.textSecondary}
+                      />
+                      <Text style={[styles.ambientTileText, activeAmbientSounds.has('money') && styles.tileRainTextActive]} numberOfLines={2}>
+                        Make it Rain
+                      </Text>
+                    </View>
+                  </ScalePressable>
+                </View>
+
                 <Text style={styles.sectionLabel}>Nature</Text>
                 <View style={styles.grid}>
                   {NATURE_SOUNDS.filter((s) => !VISUAL_SOUND_IDS.has(s.id)).map((s) => {
@@ -278,26 +298,6 @@ export default function AmbientModal({
                       </ScalePressable>
                     );
                   })}
-                </View>
-
-                <Text style={styles.sectionLabel}>Visual</Text>
-                <View style={styles.grid}>
-                  <ScalePressable
-                    scaleTo={0.92}
-                    style={[styles.tile, activeAmbientSounds.has('money') && styles.tileRainActive]}
-                    onPress={() => handleTilePress('money')}
-                  >
-                    <View style={styles.ambientTileInner}>
-                      <Ionicons
-                        name="cash-outline"
-                        size={28}
-                        color={activeAmbientSounds.has('money') ? '#4CAF50' : Colors.textSecondary}
-                      />
-                      <Text style={[styles.ambientTileText, activeAmbientSounds.has('money') && styles.tileRainTextActive]} numberOfLines={2}>
-                        Make it Rain
-                      </Text>
-                    </View>
-                  </ScalePressable>
                 </View>
               </ScrollView>
             </Pressable>

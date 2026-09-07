@@ -61,7 +61,12 @@ const isSmallDevice = screenWidth < 380;
 const recordColor = '#FF0000';
 const TRIM_MIN_GAP_SECONDS = 0.35;
 const TRIM_EPSILON = 0.0001;
-const RECORDING_EFFECTS_STORAGE_KEY = 'recording_effect_preferences_v1';
+const RECORDING_EFFECTS_STORAGE_KEY = 'recording_effect_preferences_v2';
+const DEFAULT_RECORDING_EFFECTS = {
+  enhance: true,
+  echo: true,
+  reverb: true,
+};
 
 const normalizeParam = (value?: string | string[]) =>
   Array.isArray(value) ? value[0] : value;
@@ -152,11 +157,7 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
   const [audioDuration, setAudioDuration] = useState(0);
   const [trimStartRatio, setTrimStartRatio] = useState(0);
   const [trimEndRatio, setTrimEndRatio] = useState(1);
-  const [effects, setEffects] = useState({
-    enhance: false,
-    echo: false,
-    reverb: false,
-  });
+  const [effects, setEffects] = useState(DEFAULT_RECORDING_EFFECTS);
   const effectsPrefsLoadedRef = useRef(false);
   const transition = useRef(new Animated.Value(0)).current;
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -235,9 +236,9 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
         if (raw) {
           const parsed = JSON.parse(raw) as Partial<typeof effects>;
           setEffects({
-            enhance: parsed.enhance === true,
-            echo: parsed.echo === true,
-            reverb: parsed.reverb === true,
+            enhance: parsed.enhance !== false,
+            echo: parsed.echo !== false,
+            reverb: parsed.reverb !== false,
           });
         }
       } catch {
@@ -783,7 +784,7 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
     }
   };
 
-  const handleDelete = () => {
+  const handleRedo = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     stopCurrentPlayback(true);
     setAudioUri('');
@@ -1089,8 +1090,8 @@ export default function RecordingScreen({ reviewMode }: RecordingScreenProps = {
               </View>
 
               <View style={styles.actionsRow}>
-                <ScaleBtn style={styles.deleteBtn} onPress={handleDelete} scaleTo={0.82}>
-                  <Ionicons name="trash-outline" size={26} color="#FF3B30" />
+                <ScaleBtn style={styles.redoBtn} onPress={handleRedo} scaleTo={0.82}>
+                  <Ionicons name="refresh-outline" size={26} color="#FFFFFF" />
                 </ScaleBtn>
                 <ScalePressable style={styles.saveBtn} onPress={handleSave} scaleTo={0.96}>
                   <Text style={styles.saveText}>{isApplyingEnhance ? 'Applying...' : 'Save'}</Text>
@@ -1328,7 +1329,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  deleteBtn: {
+  redoBtn: {
     width: 54,
     height: 54,
     borderRadius: 27,
